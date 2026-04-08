@@ -23,6 +23,7 @@
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
+    "socket.io": "^4.8.3",
     "typeorm": "^0.3.28",
     "zod": "^4.3.6"
   },

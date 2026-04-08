@@ -42,3 +42,15 @@ export class ConflictError extends AppError {
     super(message, 409);
   }
 }
+
+export class StateError extends AppError {
+  constructor(message = "Invalid state transition") {
+    super(message, 400);
+  }
+}
+
+export class StateConflictError extends AppError {
+  constructor(message = "State has been modified by another action") {
+    super(message, 409);
+  }
+}

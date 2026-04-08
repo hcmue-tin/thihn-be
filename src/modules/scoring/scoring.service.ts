@@ -1,0 +1,131 @@
+import { AppDataSource } from "../../config/database";
+import { Contestant } from "../contestant/contestant.entity";
+import { Answer } from "../submission/answer.entity";
+import { FillBlankAnswer } from "../question/fillBlankAnswer.entity";
+import { Option } from "../question/option.entity";
+import { Question } from "../question/question.entity";
+import { NotFoundError } from "../../shared/errors/AppError";
+
+type ScoringResult = {
+  stats: Record<string, number>;
+  contestantResults: Array<{ contestantId: number; questionId: number; isCorrect: boolean; scoreEarned: number; totalScore: number }>;
+};
+
+export class ScoringService {
+  private questionRepo = AppDataSource.getRepository(Question);
+  private optionRepo = AppDataSource.getRepository(Option);
+  private fillBlankRepo = AppDataSource.getRepository(FillBlankAnswer);
+  private answerRepo = AppDataSource.getRepository(Answer);
+
+  normalizeFillBlank(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[.,!?;:，。！？、；：]/g, "")
+      .replace(/\s+/g, " ");
+  }
+
+  async scoreAll(questionId: number): Promise<ScoringResult> {
+    const question = await this.questionRepo.findOne({ where: { id: questionId } });
+    if (!question) throw new NotFoundError("Question not found");
+
+    const [answers, options, fillBlankAnswers] = await Promise.all([
+      this.answerRepo.find({ where: { questionId } }),
+      this.optionRepo.find({ where: { questionId } }),
+      this.fillBlankRepo.find({ where: { questionId } })
+    ]);
+
+    if (answers.length === 0) {
+      return { stats: { total: 0, correct: 0, correctRate: 0 }, contestantResults: [] };
+    }
+
+    const correctOptionIds = options.filter((o) => o.isCorrect).map((o) => o.id).sort((a, b) => a - b);
+    const normalizedAccepted = fillBlankAnswers.map((item) => this.normalizeFillBlank(item.acceptedAnswer));
+
+    const evaluated = answers.map((answer) => {
+      let isCorrect = false;
+      switch (question.type) {
+        case "single_choice": {
+          const selected = (answer.selectedOptionIds ?? [])[0];
+          isCorrect = selected !== undefined && correctOptionIds.length > 0 && selected === correctOptionIds[0];
+          break;
+        }
+        case "multiple_choice": {
+          const selected = [...(answer.selectedOptionIds ?? [])].sort((a, b) => a - b);
+          isCorrect = JSON.stringify(selected) === JSON.stringify(correctOptionIds);
+          break;
+        }
+        case "fill_blank": {
+          const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
+          isCorrect = normalizedAccepted.includes(normalizedUser);
+          break;
+        }
+      }
+      return {
+        answerId: answer.id,
+        contestantId: answer.contestantId,
+        questionId: answer.questionId,
+        isCorrect,
+        scoreEarned: isCorrect ? question.score : 0
+      };
+    });
+
+    await AppDataSource.transaction(async (manager) => {
+      const answerIds = evaluated.map((item) => item.answerId);
+      const isCorrectCase = evaluated.map((item) => `WHEN ${item.answerId} THEN ${item.isCorrect ? 1 : 0}`).join(" ");
+      const scoreCase = evaluated.map((item) => `WHEN ${item.answerId} THEN ${item.scoreEarned}`).join(" ");
+
+      await manager.query(
+        `UPDATE answers
+         SET is_correct = CASE id ${isCorrectCase} END,
+             score_earned = CASE id ${scoreCase} END
+         WHERE id IN (${answerIds.join(",")})`
+      );
+
+      const contestantIds = [...new Set(evaluated.map((item) => item.contestantId))];
+      const totals: Array<{ contestantId: number; totalScore: number }> = await manager
+        .createQueryBuilder(Answer, "a")
+        .select("a.contestant_id", "contestantId")
+        .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+        .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
+        .groupBy("a.contestant_id")
+        .getRawMany();
+
+      if (totals.length > 0) {
+        const totalCase = totals.map((item) => `WHEN ${item.contestantId} THEN ${Number(item.totalScore)}`).join(" ");
+        await manager.query(
+          `UPDATE contestants
+           SET total_score = CASE id ${totalCase} ELSE total_score END
+           WHERE id IN (${totals.map((item) => item.contestantId).join(",")})`
+        );
+      }
+    });
+
+    const contestantTotalRows = await AppDataSource.getRepository(Contestant)
+      .createQueryBuilder("c")
+      .select("c.id", "contestantId")
+      .addSelect("c.total_score", "totalScore")
+      .where("c.id IN (:...contestantIds)", { contestantIds: [...new Set(evaluated.map((e) => e.contestantId))] })
+      .getRawMany<{ contestantId: number; totalScore: number }>();
+
+    const totalMap = new Map<number, number>(contestantTotalRows.map((row) => [Number(row.contestantId), Number(row.totalScore)]));
+    const correctCount = evaluated.filter((item) => item.isCorrect).length;
+
+    return {
+      stats: {
+        total: evaluated.length,
+        correct: correctCount,
+        correctRate: evaluated.length > 0 ? Number(((correctCount / evaluated.length) * 100).toFixed(2)) : 0
+      },
+      contestantResults: evaluated.map((item) => ({
+        contestantId: item.contestantId,
+        questionId: item.questionId,
+        isCorrect: item.isCorrect,
+        scoreEarned: item.scoreEarned,
+        totalScore: totalMap.get(item.contestantId) ?? 0
+      }))
+    };
+  }
+}
