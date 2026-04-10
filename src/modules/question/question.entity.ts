@@ -4,7 +4,14 @@ import { Option } from "./option.entity";
 import { FillBlankAnswer } from "./fillBlankAnswer.entity";
 import { Answer } from "../submission/answer.entity";
 
-export type QuestionType = "single_choice" | "multiple_choice" | "fill_blank";
+export type QuestionType =
+  | "true_false"
+  | "single_choice"
+  | "multiple_choice"
+  | "fill_blank"
+  | "ordering"
+  | "matching"
+  | "listening_choice";
 
 @Entity("questions")
 @Unique(["examSetId", "orderNum"])
@@ -18,7 +25,7 @@ export class Question {
 
   @Column({
     type: "enum",
-    enum: ["single_choice", "multiple_choice", "fill_blank"]
+    enum: ["true_false", "single_choice", "multiple_choice", "fill_blank", "ordering", "matching", "listening_choice"]
   })
   type!: QuestionType;
 

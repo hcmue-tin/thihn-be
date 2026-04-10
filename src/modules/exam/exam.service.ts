@@ -171,11 +171,14 @@ export class ExamService {
   }
 
   private validateQuestionInput(input: QuestionInput): void {
-    if (input.type === "fill_blank" && input.fillBlankAnswers.length === 0) {
-      throw new ValidationError("fill_blank question requires at least 1 accepted answer");
+    if (["fill_blank", "ordering", "matching"].includes(input.type) && input.fillBlankAnswers.length === 0) {
+      throw new ValidationError(`${input.type} question requires at least 1 accepted answer`);
     }
-    if ((input.type === "single_choice" || input.type === "multiple_choice") && input.options.length === 0) {
+    if (["true_false", "single_choice", "multiple_choice", "listening_choice", "fill_blank"].includes(input.type) && input.options.length === 0) {
       throw new ValidationError("Choice question requires options");
+    }
+    if (input.type === "listening_choice" && !input.audioUrl) {
+      throw new ValidationError("listening_choice question requires audioUrl");
     }
   }
 

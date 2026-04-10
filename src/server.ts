@@ -41,6 +41,11 @@ const start = async (): Promise<void> => {
     }, delay);
   };
 
+  if (env.autoResetContestOnBoot) {
+    await contestService.resetSession();
+    logger.info("Contest session reset on server boot");
+  }
+
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth?.token as string | undefined;
@@ -74,6 +79,14 @@ const start = async (): Promise<void> => {
 
     const state = await contestService.getCurrentState();
     socket.emit("contest:sync-state", { fullState: state });
+    if (state.currentQuestionId) {
+      const { question, options } = await contestService.getQuestionDisplayData(state.currentQuestionId);
+      socket.emit("question:show", {
+        question,
+        options,
+        countdownSeconds: question.countdownSeconds
+      });
+    }
   });
 
   httpServer.listen(env.port, () => {

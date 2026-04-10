@@ -149,4 +149,14 @@ export const registerAdminSocketHandlers = (
       io.emit("leaderboard:show", { rankings: result.rankings });
     });
   });
+
+  socket.on("admin:reset-session", async (_rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:reset-session", {}, async () => {
+      clearCountdownEnd();
+      const state = await contestService.resetSession();
+      io.emit("countdown:end", {});
+      io.emit("contest:sync-state", { fullState: state });
+      io.emit("screen:change", { screen: state.screen });
+    });
+  });
 };

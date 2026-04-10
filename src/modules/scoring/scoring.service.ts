@@ -47,7 +47,13 @@ export class ScoringService {
     const evaluated = answers.map((answer) => {
       let isCorrect = false;
       switch (question.type) {
+        case "true_false":
         case "single_choice": {
+          const selected = (answer.selectedOptionIds ?? [])[0];
+          isCorrect = selected !== undefined && correctOptionIds.length > 0 && selected === correctOptionIds[0];
+          break;
+        }
+        case "listening_choice": {
           const selected = (answer.selectedOptionIds ?? [])[0];
           isCorrect = selected !== undefined && correctOptionIds.length > 0 && selected === correctOptionIds[0];
           break;
@@ -58,6 +64,16 @@ export class ScoringService {
           break;
         }
         case "fill_blank": {
+          const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
+          isCorrect = normalizedAccepted.includes(normalizedUser);
+          break;
+        }
+        case "ordering": {
+          const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
+          isCorrect = normalizedAccepted.includes(normalizedUser);
+          break;
+        }
+        case "matching": {
           const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
           isCorrect = normalizedAccepted.includes(normalizedUser);
           break;

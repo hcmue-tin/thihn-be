@@ -40,7 +40,7 @@ export const updateExamSetSchema = {
 export const createQuestionSchema = {
   body: z.object({
     examSetId: z.number().int().positive(),
-    type: z.enum(["single_choice", "multiple_choice", "fill_blank"]),
+    type: z.enum(["true_false", "single_choice", "multiple_choice", "fill_blank", "ordering", "matching", "listening_choice"]),
     content: z.string().min(1),
     imageUrl: z.string().optional().nullable(),
     audioUrl: z.string().optional().nullable(),

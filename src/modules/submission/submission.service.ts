@@ -1,5 +1,5 @@
 import { AppDataSource } from "../../config/database";
-import { AppError, ConflictError } from "../../shared/errors/AppError";
+import { AppError } from "../../shared/errors/AppError";
 import { ContestState } from "../contest/contestState.entity";
 import { Answer } from "./answer.entity";
 
@@ -33,7 +33,22 @@ export class SubmissionService {
       throw new AppError("Time is up", 400);
     }
 
-    try {
+    const existing = await this.answerRepo.findOne({
+      where: {
+        contestantId: input.contestantId,
+        questionId: input.questionId
+      }
+    });
+
+    if (existing) {
+      existing.selectedOptionIds = input.selectedOptionIds ?? null;
+      existing.fillText = input.fillText ?? null;
+      existing.submittedAt = submittedAt;
+      existing.examSetId = state.currentExamSetId as number;
+      existing.isCorrect = null;
+      existing.scoreEarned = null;
+      await this.answerRepo.save(existing);
+    } else {
       await this.answerRepo.insert({
         contestantId: input.contestantId,
         questionId: input.questionId,
@@ -44,12 +59,6 @@ export class SubmissionService {
         submittedAt,
         examSetId: state.currentExamSetId as number
       });
-    } catch (error) {
-      const dbError = error as { code?: string };
-      if (dbError.code === "ER_DUP_ENTRY") {
-        throw new ConflictError("Answer already submitted for this question");
-      }
-      throw error;
     }
 
     return {

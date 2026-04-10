@@ -91,6 +91,13 @@ export class ContestService {
     return { state, question, options };
   }
 
+  async getQuestionDisplayData(questionId: number): Promise<{ question: Question; options: Option[] }> {
+    const question = await this.questionRepo.findOne({ where: { id: questionId } });
+    if (!question) throw new NotFoundError("Question not found");
+    const options = await this.optionRepo.find({ where: { questionId }, order: { orderNum: "ASC" } });
+    return { question, options };
+  }
+
   async startCountdown(questionId: number): Promise<{ state: ContestState; seconds: number; endsAt: number }> {
     const question = await this.questionRepo.findOne({ where: { id: questionId } });
     if (!question) throw new NotFoundError("Question not found");
@@ -173,6 +180,16 @@ export class ContestService {
       return current;
     }
     return this.updateContestState(current.version, { isCountdownActive: false });
+  }
+
+  async resetSession(): Promise<ContestState> {
+    const current = await this.getCurrentState();
+    return this.updateContestState(current.version, {
+      screen: "idle",
+      currentQuestionId: null,
+      isCountdownActive: false,
+      countdownEndAt: null
+    });
   }
 
   async writeAudit(actor: string, action: string, payload?: Record<string, unknown>): Promise<void> {
