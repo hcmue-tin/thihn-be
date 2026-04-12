@@ -16,13 +16,15 @@ export class ContestantService {
   }
 
   async create(input: {
-    teamId: number;
+    teamId: number | null;
     code: string;
     password: string;
     name: string;
     unit?: string | null;
   }): Promise<Contestant> {
-    await this.ensureTeamExists(input.teamId);
+    if (input.teamId !== null) {
+      await this.ensureTeamExists(input.teamId);
+    }
     const existed = await this.contestantRepo.findOne({ where: { code: input.code } });
     if (existed) {
       throw new ConflictError("Contestant code already exists");
@@ -42,15 +44,17 @@ export class ContestantService {
 
   async update(
     id: number,
-    input: { teamId?: number; code?: string; password?: string; name?: string; unit?: string | null }
+    input: { teamId?: number | null; code?: string; password?: string; name?: string; unit?: string | null }
   ): Promise<Contestant> {
     const contestant = await this.contestantRepo.findOne({ where: { id } });
     if (!contestant) {
       throw new NotFoundError("Contestant not found");
     }
 
-    if (input.teamId) {
-      await this.ensureTeamExists(input.teamId);
+    if (input.teamId !== undefined) {
+      if (input.teamId !== null) {
+        await this.ensureTeamExists(input.teamId);
+      }
       contestant.teamId = input.teamId;
     }
 

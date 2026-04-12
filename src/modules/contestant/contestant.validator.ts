@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const createContestantSchema = {
   body: z.object({
-    teamId: z.number().int().positive(),
+    teamId: z.number().int().positive().nullable(),
     code: z.string().min(1),
     password: z.string().min(6),
     name: z.string().min(1),
@@ -15,7 +15,7 @@ export const updateContestantSchema = {
     id: z.coerce.number().int().positive()
   }),
   body: z.object({
-    teamId: z.number().int().positive().optional(),
+    teamId: z.number().int().positive().nullable().optional(),
     code: z.string().min(1).optional(),
     password: z.string().min(6).optional(),
     name: z.string().min(1).optional(),

@@ -36,6 +36,24 @@ export class ContestService {
     return state;
   }
 
+  private async ensureContestStateExists(): Promise<ContestState> {
+    let state = await this.contestStateRepo.findOne({ where: { id: 1 } });
+    if (!state) {
+      state = await this.contestStateRepo.save(
+        this.contestStateRepo.create({
+          id: 1,
+          screen: "idle",
+          currentExamSetId: null,
+          currentQuestionId: null,
+          isCountdownActive: false,
+          countdownEndAt: null,
+          version: 0
+        })
+      );
+    }
+    return state;
+  }
+
   async updateContestState(expectedVersion: number, patch: UpdateStateInput): Promise<ContestState> {
     const result = await this.contestStateRepo
       .createQueryBuilder()
@@ -183,6 +201,7 @@ export class ContestService {
   }
 
   async resetSession(): Promise<ContestState> {
+    await this.ensureContestStateExists();
     const current = await this.getCurrentState();
     return this.updateContestState(current.version, {
       screen: "idle",

@@ -8,8 +8,8 @@ export class Contestant {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ name: "team_id", type: "int" })
-  teamId!: number;
+  @Column({ name: "team_id", type: "int", nullable: true })
+  teamId!: number | null;
 
   @Column({ type: "varchar", length: 100 })
   code!: string;
@@ -32,9 +32,9 @@ export class Contestant {
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 
-  @ManyToOne(() => Team, (team) => team.contestants, { onDelete: "RESTRICT" })
+  @ManyToOne(() => Team, (team) => team.contestants, { onDelete: "RESTRICT", nullable: true })
   @JoinColumn({ name: "team_id" })
-  team!: Team;
+  team!: Team | null;
 
   @OneToMany(() => Answer, (answer) => answer.contestant)
   answers!: Answer[];
