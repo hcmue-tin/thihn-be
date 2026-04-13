@@ -9,6 +9,7 @@ import { authRouter } from "./modules/auth/auth.routes";
 import { teamRouter } from "./modules/team/team.routes";
 import { contestantRouter } from "./modules/contestant/contestant.routes";
 import { examRouter } from "./modules/exam/exam.routes";
+import { contestStateRouter } from "./modules/contest/contestState.routes";
 import { uploadRouter } from "./modules/upload/upload.routes";
 import { errorHandler } from "./shared/middleware/errorHandler";
 
@@ -31,6 +32,7 @@ app.use(
 app.use("/api/teams", teamRouter);
 app.use("/api/contestants", contestantRouter);
 app.use("/api", examRouter);
+app.use("/api/contest-state", contestStateRouter);
 app.use("/api", uploadRouter);
 app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 

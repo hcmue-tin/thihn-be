@@ -79,6 +79,15 @@ const start = async (): Promise<void> => {
 
     const state = await contestService.getCurrentState();
     socket.emit("contest:sync-state", { fullState: state });
+    if (state.screen === "rules") {
+      socket.emit("screen:change", {
+        screen: state.screen,
+        data: { rulesContent: state.rulesContent ?? null }
+      });
+    }
+    if (state.screen === "team_list") {
+      socket.emit("team-list:show", { teams: await contestService.getTeamList() });
+    }
     if (state.currentQuestionId) {
       const { question, options } = await contestService.getQuestionDisplayData(state.currentQuestionId);
       socket.emit("question:show", {
@@ -86,6 +95,12 @@ const start = async (): Promise<void> => {
         options,
         countdownSeconds: question.countdownSeconds
       });
+      if (state.screen === "reveal" && clientType === "led") {
+        socket.emit("answer-results:show", {
+          questionId: state.currentQuestionId,
+          results: await contestService.getAnswerResultsForQuestion(state.currentQuestionId)
+        });
+      }
     }
   });
 

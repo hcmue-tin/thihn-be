@@ -26,6 +26,9 @@ export class ContestState {
   @Column({ name: "countdown_end_at", type: "datetime", nullable: true })
   countdownEndAt!: Date | null;
 
+  @Column({ name: "rules_content", type: "text", nullable: true })
+  rulesContent!: string | null;
+
   @Column({ type: "int", default: 0 })
   version!: number;
 

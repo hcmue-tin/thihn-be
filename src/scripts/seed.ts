@@ -349,6 +349,7 @@ const seed = async (): Promise<void> => {
         currentQuestionId: null,
         isCountdownActive: false,
         countdownEndAt: null,
+        rulesContent: null,
         version: 0
       })
     );

@@ -47,7 +47,19 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:set-screen", rawPayload ?? {}, async () => {
       const payload = setScreenSchema.parse(rawPayload);
       const state = await contestService.setScreen(payload.screen as ContestScreen);
+      if (payload.screen === "rules") {
+        io.emit("screen:change", {
+          screen: state.screen,
+          data: { rulesContent: await contestService.getRulesContent() }
+        });
+        return;
+      }
+
       io.emit("screen:change", { screen: state.screen });
+
+      if (payload.screen === "team_list") {
+        io.emit("team-list:show", { teams: await contestService.getTeamList() });
+      }
     });
   });
 
@@ -98,6 +110,10 @@ export const registerAdminSocketHandlers = (
         fillBlankAnswers: result.fillBlankAnswers,
         stats: result.stats
       });
+      io.to("led-screen").emit("answer-results:show", {
+        questionId: result.questionId,
+        results: await contestService.getAnswerResultsForQuestion(result.questionId)
+      });
       result.contestantResults.forEach((item) => {
         io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
           questionId: item.questionId,
@@ -121,6 +137,10 @@ export const registerAdminSocketHandlers = (
         correctOptionIds: result.correctOptionIds,
         fillBlankAnswers: result.fillBlankAnswers,
         stats: result.stats
+      });
+      io.to("led-screen").emit("answer-results:show", {
+        questionId: result.questionId,
+        results: await contestService.getAnswerResultsForQuestion(result.questionId)
       });
       result.contestantResults.forEach((item) => {
         io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {

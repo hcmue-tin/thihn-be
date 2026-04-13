@@ -16,6 +16,7 @@ type UpdateStateInput = Partial<{
   currentQuestionId: number | null;
   isCountdownActive: boolean;
   countdownEndAt: Date | null;
+  rulesContent: string | null;
 }>;
 
 export class ContestService {
@@ -47,6 +48,7 @@ export class ContestService {
           currentQuestionId: null,
           isCountdownActive: false,
           countdownEndAt: null,
+        rulesContent: null,
           version: 0
         })
       );
@@ -64,6 +66,7 @@ export class ContestService {
         currentQuestionId: patch.currentQuestionId,
         isCountdownActive: patch.isCountdownActive,
         countdownEndAt: patch.countdownEndAt,
+        rulesContent: patch.rulesContent,
         version: () => "version + 1"
       })
       .where("id = :id", { id: 1 })
@@ -209,6 +212,87 @@ export class ContestService {
       isCountdownActive: false,
       countdownEndAt: null
     });
+  }
+
+  async getRulesContent(): Promise<string | null> {
+    const state = await this.ensureContestStateExists();
+    return state.rulesContent ?? null;
+  }
+
+  async updateRulesContent(rulesContent: string): Promise<ContestState> {
+    await this.ensureContestStateExists();
+    const current = await this.getCurrentState();
+    return this.updateContestState(current.version, { rulesContent });
+  }
+
+  async getTeamList(): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {
+    const rows = await AppDataSource.createQueryBuilder()
+      .select("t.id", "teamId")
+      .addSelect("t.name", "teamName")
+      .addSelect("c.id", "contestantId")
+      .addSelect("c.name", "contestantName")
+      .addSelect("c.code", "contestantCode")
+      .addSelect("c.unit", "contestantUnit")
+      .from("teams", "t")
+      .leftJoin("contestants", "c", "c.team_id = t.id")
+      .orderBy("t.id", "ASC")
+      .addOrderBy("c.name", "ASC")
+      .getRawMany<{
+        teamId: string;
+        teamName: string;
+        contestantId: string | null;
+        contestantName: string | null;
+        contestantCode: string | null;
+        contestantUnit: string | null;
+      }>();
+
+    const grouped = new Map<number, { id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>();
+    for (const row of rows) {
+      const teamId = Number(row.teamId);
+      if (!grouped.has(teamId)) {
+        grouped.set(teamId, { id: teamId, name: row.teamName, contestants: [] });
+      }
+      if (row.contestantId) {
+        grouped.get(teamId)!.contestants.push({
+          id: Number(row.contestantId),
+          name: row.contestantName ?? "",
+          code: row.contestantCode ?? "",
+          unit: row.contestantUnit
+        });
+      }
+    }
+    return [...grouped.values()];
+  }
+
+  async getAnswerResultsForQuestion(
+    questionId: number
+  ): Promise<Array<{ contestantId: number; contestantName: string; teamName: string; isCorrect: boolean; scoreEarned: number }>> {
+    const rows = await AppDataSource.createQueryBuilder()
+      .select("a.contestant_id", "contestantId")
+      .addSelect("c.name", "contestantName")
+      .addSelect("COALESCE(t.name, 'Chưa có đội')", "teamName")
+      .addSelect("a.is_correct", "isCorrect")
+      .addSelect("COALESCE(a.score_earned, 0)", "scoreEarned")
+      .from("answers", "a")
+      .innerJoin("contestants", "c", "c.id = a.contestant_id")
+      .leftJoin("teams", "t", "t.id = c.team_id")
+      .where("a.question_id = :questionId", { questionId })
+      .orderBy("c.name", "ASC")
+      .getRawMany<{
+        contestantId: string;
+        contestantName: string;
+        teamName: string;
+        isCorrect: number | boolean | null;
+        scoreEarned: string;
+      }>();
+
+    return rows.map((row) => ({
+      contestantId: Number(row.contestantId),
+      contestantName: row.contestantName,
+      teamName: row.teamName,
+      isCorrect: Boolean(row.isCorrect),
+      scoreEarned: Number(row.scoreEarned)
+    }));
   }
 
   async writeAudit(actor: string, action: string, payload?: Record<string, unknown>): Promise<void> {
