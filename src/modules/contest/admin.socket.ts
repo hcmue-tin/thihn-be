@@ -8,9 +8,11 @@ import { ContestScreen } from "./contest.stateMachine";
 type AckResponse = { success: boolean; message?: string };
 type AckFn = (response: AckResponse) => void;
 
-const setScreenSchema = z.object({ screen: z.enum(["waiting", "rules", "team_list"]) });
+const setScreenSchema = z.object({ screen: z.enum(["waiting", "rules", "team_list"]), teamIds: z.array(z.number().int().positive()).optional() });
 const examSetSchema = z.object({ examSetId: z.number().int().positive() });
 const questionSchema = z.object({ questionId: z.number().int().positive() });
+const teamScoreSchema = z.object({ examSetId: z.number().int().positive(), teamIds: z.array(z.number().int().positive()).optional() });
+const leaderboardSchema = z.object({ teamIds: z.array(z.number().int().positive()).optional() });
 
 export const registerAdminSocketHandlers = (
   io: Server,
@@ -58,7 +60,7 @@ export const registerAdminSocketHandlers = (
       io.emit("screen:change", { screen: state.screen });
 
       if (payload.screen === "team_list") {
-        io.emit("team-list:show", { teams: await contestService.getTeamList() });
+        io.emit("team-list:show", { teams: await contestService.getTeamList(payload.teamIds) });
       }
     });
   });
@@ -155,16 +157,17 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:show-team-score", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:show-team-score", rawPayload ?? {}, async () => {
-      const payload = examSetSchema.parse(rawPayload);
-      const result = await contestService.showTeamScore(payload.examSetId);
+      const payload = teamScoreSchema.parse(rawPayload);
+      const result = await contestService.showTeamScore(payload.examSetId, payload.teamIds);
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("team-score:show", { examSetId: result.examSetId, teams: result.teams });
     });
   });
 
-  socket.on("admin:show-leaderboard", async (_rawPayload, ack?: AckFn) => {
-    await safeHandle(ack, "admin:show-leaderboard", {}, async () => {
-      const result = await contestService.showLeaderboard();
+  socket.on("admin:show-leaderboard", async (rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:show-leaderboard", rawPayload ?? {}, async () => {
+      const payload = leaderboardSchema.parse(rawPayload ?? {});
+      const result = await contestService.showLeaderboard(payload.teamIds);
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("leaderboard:show", { rankings: result.rankings });
     });

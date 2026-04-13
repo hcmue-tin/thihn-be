@@ -177,21 +177,21 @@ export class ContestService {
     };
   }
 
-  async showTeamScore(examSetId: number): Promise<{ state: ContestState; examSetId: number; teams: unknown[] }> {
+  async showTeamScore(examSetId: number, teamIds?: number[]): Promise<{ state: ContestState; examSetId: number; teams: unknown[] }> {
     const examSet = await this.examSetRepo.findOne({ where: { id: examSetId } });
     if (!examSet) throw new NotFoundError("Exam set not found");
     const current = await this.getCurrentState();
     assertTransition(current.screen, "team_score");
     const state = await this.updateContestState(current.version, { screen: "team_score" });
-    const teams = await this.leaderboardService.getTeamScores(examSetId);
+    const teams = await this.leaderboardService.getTeamScores(examSetId, teamIds);
     return { state, examSetId, teams };
   }
 
-  async showLeaderboard(): Promise<{ state: ContestState; rankings: Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }> }> {
+  async showLeaderboard(teamIds?: number[]): Promise<{ state: ContestState; rankings: Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }> }> {
     const current = await this.getCurrentState();
     assertTransition(current.screen, "leaderboard");
     const state = await this.updateContestState(current.version, { screen: "leaderboard" });
-    const rankings = await this.leaderboardService.getFinalRankings();
+    const rankings = await this.leaderboardService.getFinalRankings(teamIds);
     return { state, rankings };
   }
 
@@ -225,8 +225,8 @@ export class ContestService {
     return this.updateContestState(current.version, { rulesContent });
   }
 
-  async getTeamList(): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {
-    const rows = await AppDataSource.createQueryBuilder()
+  async getTeamList(teamIds?: number[]): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {
+    let qb = AppDataSource.createQueryBuilder()
       .select("t.id", "teamId")
       .addSelect("t.name", "teamName")
       .addSelect("c.id", "contestantId")
@@ -236,15 +236,20 @@ export class ContestService {
       .from("teams", "t")
       .leftJoin("contestants", "c", "c.team_id = t.id")
       .orderBy("t.id", "ASC")
-      .addOrderBy("c.name", "ASC")
-      .getRawMany<{
-        teamId: string;
-        teamName: string;
-        contestantId: string | null;
-        contestantName: string | null;
-        contestantCode: string | null;
-        contestantUnit: string | null;
-      }>();
+      .addOrderBy("c.name", "ASC");
+
+    if (teamIds && teamIds.length > 0) {
+      qb = qb.where("t.id IN (:...teamIds)", { teamIds });
+    }
+
+    const rows = await qb.getRawMany<{
+      teamId: string;
+      teamName: string;
+      contestantId: string | null;
+      contestantName: string | null;
+      contestantCode: string | null;
+      contestantUnit: string | null;
+    }>();
 
     const grouped = new Map<number, { id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>();
     for (const row of rows) {
