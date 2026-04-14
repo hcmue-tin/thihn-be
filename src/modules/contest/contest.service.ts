@@ -17,6 +17,7 @@ type UpdateStateInput = Partial<{
   isCountdownActive: boolean;
   countdownEndAt: Date | null;
   rulesContent: string | null;
+  backgroundUrl: string | null;
 }>;
 
 export class ContestService {
@@ -48,7 +49,8 @@ export class ContestService {
           currentQuestionId: null,
           isCountdownActive: false,
           countdownEndAt: null,
-        rulesContent: null,
+          rulesContent: null,
+          backgroundUrl: null,
           version: 0
         })
       );
@@ -67,6 +69,7 @@ export class ContestService {
         isCountdownActive: patch.isCountdownActive,
         countdownEndAt: patch.countdownEndAt,
         rulesContent: patch.rulesContent,
+        backgroundUrl: patch.backgroundUrl,
         version: () => "version + 1"
       })
       .where("id = :id", { id: 1 })
@@ -225,6 +228,61 @@ export class ContestService {
     return this.updateContestState(current.version, { rulesContent });
   }
 
+  async updateDisplayConfig(input: { rulesContent: string; backgroundUrl: string | null }): Promise<ContestState> {
+    await this.ensureContestStateExists();
+    const current = await this.getCurrentState();
+    return this.updateContestState(current.version, {
+      rulesContent: input.rulesContent,
+      backgroundUrl: input.backgroundUrl
+    });
+  }
+
+  async retakeQuestion(questionId: number): Promise<void> {
+    const question = await this.questionRepo.findOne({ where: { id: questionId } });
+    if (!question) throw new NotFoundError("Question not found");
+
+    const contestantRows = await AppDataSource.createQueryBuilder()
+      .select("a.contestant_id", "contestantId")
+      .from("answers", "a")
+      .where("a.question_id = :questionId", { questionId })
+      .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
+      .groupBy("a.contestant_id")
+      .getRawMany<{ contestantId: string }>();
+
+    const contestantIds = contestantRows.map((row) => Number(row.contestantId));
+    if (contestantIds.length === 0) {
+      return;
+    }
+
+    await AppDataSource.transaction(async (manager) => {
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from("answers")
+        .where("question_id = :questionId", { questionId })
+        .andWhere("exam_set_id = :examSetId", { examSetId: question.examSetId })
+        .execute();
+
+      const totals = await manager
+        .createQueryBuilder()
+        .select("a.contestant_id", "contestantId")
+        .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+        .from("answers", "a")
+        .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
+        .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
+        .groupBy("a.contestant_id")
+        .getRawMany<{ contestantId: string; totalScore: string }>();
+
+      const totalMap = new Map<number, number>(totals.map((row) => [Number(row.contestantId), Number(row.totalScore)]));
+      const totalCase = contestantIds.map((id) => `WHEN ${id} THEN ${totalMap.get(id) ?? 0}`).join(" ");
+      await manager.query(
+        `UPDATE contestants
+         SET total_score = CASE id ${totalCase} ELSE total_score END
+         WHERE id IN (${contestantIds.join(",")})`
+      );
+    });
+  }
+
   async getTeamList(teamIds?: number[]): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {
     let qb = AppDataSource.createQueryBuilder()
       .select("t.id", "teamId")
@@ -271,22 +329,23 @@ export class ContestService {
 
   async getAnswerResultsForQuestion(
     questionId: number
-  ): Promise<Array<{ contestantId: number; contestantName: string; teamName: string; isCorrect: boolean; scoreEarned: number }>> {
+  ): Promise<Array<{ contestantId: number; contestantName: string; teamName: string; hasSubmitted: boolean; isCorrect: boolean | null; scoreEarned: number }>> {
     const rows = await AppDataSource.createQueryBuilder()
-      .select("a.contestant_id", "contestantId")
+      .select("c.id", "contestantId")
       .addSelect("c.name", "contestantName")
       .addSelect("COALESCE(t.name, 'Chưa có đội')", "teamName")
+      .addSelect("(COALESCE(JSON_LENGTH(a.selected_option_ids), 0) > 0 OR COALESCE(TRIM(a.fill_text), '') <> '')", "hasSubmitted")
       .addSelect("a.is_correct", "isCorrect")
       .addSelect("COALESCE(a.score_earned, 0)", "scoreEarned")
-      .from("answers", "a")
-      .innerJoin("contestants", "c", "c.id = a.contestant_id")
+      .from("contestants", "c")
       .leftJoin("teams", "t", "t.id = c.team_id")
-      .where("a.question_id = :questionId", { questionId })
+      .leftJoin("answers", "a", "a.contestant_id = c.id AND a.question_id = :questionId", { questionId })
       .orderBy("c.name", "ASC")
       .getRawMany<{
         contestantId: string;
         contestantName: string;
         teamName: string;
+        hasSubmitted: number | boolean;
         isCorrect: number | boolean | null;
         scoreEarned: string;
       }>();
@@ -295,7 +354,8 @@ export class ContestService {
       contestantId: Number(row.contestantId),
       contestantName: row.contestantName,
       teamName: row.teamName,
-      isCorrect: Boolean(row.isCorrect),
+      hasSubmitted: Boolean(row.hasSubmitted),
+      isCorrect: row.isCorrect === null ? null : Boolean(row.isCorrect),
       scoreEarned: Number(row.scoreEarned)
     }));
   }

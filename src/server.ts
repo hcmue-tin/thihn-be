@@ -82,7 +82,7 @@ const start = async (): Promise<void> => {
     if (state.screen === "rules") {
       socket.emit("screen:change", {
         screen: state.screen,
-        data: { rulesContent: state.rulesContent ?? null }
+        data: { rulesContent: state.rulesContent ?? null, backgroundUrl: state.backgroundUrl ?? null }
       });
     }
     if (state.screen === "team_list") {

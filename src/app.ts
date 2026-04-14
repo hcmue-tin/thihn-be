@@ -15,7 +15,11 @@ import { errorHandler } from "./shared/middleware/errorHandler";
 
 export const app = express();
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
 app.use(cors());
 app.use(express.json());
 app.use(pinoHttp({ logger }));
@@ -34,7 +38,14 @@ app.use("/api/contestants", contestantRouter);
 app.use("/api", examRouter);
 app.use("/api/contest-state", contestStateRouter);
 app.use("/api", uploadRouter);
-app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+app.use(
+  "/uploads",
+  express.static(path.resolve(process.cwd(), "uploads"), {
+    setHeaders: (res) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    }
+  })
+);
 
 app.get("/api/health", (_req, res) => {
   res.json({ success: true, data: { status: "ok" } });

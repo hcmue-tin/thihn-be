@@ -106,6 +106,7 @@ export class ScoringService {
         .select("a.contestant_id", "contestantId")
         .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
         .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
+        .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
         .groupBy("a.contestant_id")
         .getRawMany();
 

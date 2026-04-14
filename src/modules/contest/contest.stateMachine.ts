@@ -4,7 +4,7 @@ import { ContestState } from "./contestState.entity";
 export type ContestScreen = ContestState["screen"];
 
 const validTransitions: Record<ContestScreen, ContestScreen[]> = {
-  idle: ["waiting"],
+  idle: ["waiting", "rules", "team_list"],
   waiting: ["rules", "team_list", "question"],
   rules: ["waiting", "team_list", "question"],
   team_list: ["waiting", "rules", "question"],

@@ -34,6 +34,12 @@ export class ContestantController {
     await contestantService.remove(params.id);
     res.json({ success: true, data: null });
   }
+
+  async history(req: Request, res: Response): Promise<void> {
+    const params: ContestantIdParamDto = req.validated?.params as ContestantIdParamDto;
+    const data = await contestantService.getHistoryByContestant(params.id);
+    res.json({ success: true, data });
+  }
 }
 
 export const contestantController = new ContestantController();

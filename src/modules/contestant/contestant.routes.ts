@@ -20,6 +20,11 @@ contestantRouter.put(
   validate(updateContestantSchema),
   asyncHandler(contestantController.update.bind(contestantController))
 );
+contestantRouter.get(
+  "/:id/history",
+  validate(contestantIdParamSchema),
+  asyncHandler(contestantController.history.bind(contestantController))
+);
 contestantRouter.delete(
   "/:id",
   validate(contestantIdParamSchema),

@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const updateRulesSchema = {
   body: z.object({
-    rulesContent: z.string()
+    rulesContent: z.string(),
+    backgroundUrl: z.string().trim().url().nullable().optional()
   })
 };
 

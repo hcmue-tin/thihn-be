@@ -76,6 +76,7 @@ export class LeaderboardService {
     if (teamIds && teamIds.length > 0) {
       qb = qb.where("t.id IN (:...teamIds)", { teamIds });
     }
+    qb = qb.andWhere("c.total_score > 0");
 
     const rows = await qb
       .orderBy("c.total_score", "DESC")

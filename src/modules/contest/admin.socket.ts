@@ -52,12 +52,12 @@ export const registerAdminSocketHandlers = (
       if (payload.screen === "rules") {
         io.emit("screen:change", {
           screen: state.screen,
-          data: { rulesContent: await contestService.getRulesContent() }
+          data: { rulesContent: state.rulesContent ?? null, backgroundUrl: state.backgroundUrl ?? null }
         });
         return;
       }
 
-      io.emit("screen:change", { screen: state.screen });
+      io.emit("screen:change", { screen: state.screen, data: { backgroundUrl: state.backgroundUrl ?? null } });
 
       if (payload.screen === "team_list") {
         io.emit("team-list:show", { teams: await contestService.getTeamList(payload.teamIds) });
@@ -170,6 +170,34 @@ export const registerAdminSocketHandlers = (
       const result = await contestService.showLeaderboard(payload.teamIds);
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("leaderboard:show", { rankings: result.rankings });
+    });
+  });
+
+  socket.on("admin:retake-question", async (rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:retake-question", rawPayload ?? {}, async () => {
+      const payload = questionSchema.parse(rawPayload);
+      await contestService.retakeQuestion(payload.questionId);
+      const result = await contestService.showQuestion(payload.questionId);
+      io.emit("screen:change", { screen: result.state.screen, data: { backgroundUrl: result.state.backgroundUrl ?? null } });
+      io.emit("question:show", {
+        question: result.question,
+        options: result.options,
+        countdownSeconds: result.question.countdownSeconds
+      });
+    });
+  });
+
+  socket.on("admin:play-led-audio", async (_rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:play-led-audio", {}, async () => {
+      const state = await contestService.getCurrentState();
+      if (!state.currentQuestionId) {
+        throw new AppError("No active question", 400);
+      }
+      const { question } = await contestService.getQuestionDisplayData(state.currentQuestionId);
+      if (!question.audioUrl) {
+        throw new AppError("Current question has no audio", 400);
+      }
+      io.to("led-screen").emit("led:play-audio", { questionId: question.id, audioUrl: question.audioUrl });
     });
   });
 

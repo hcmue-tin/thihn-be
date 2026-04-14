@@ -38,3 +38,10 @@ export const requireAdmin = (req: Request, _res: Response, next: NextFunction): 
   }
   next();
 };
+
+export const requireContestant = (req: Request, _res: Response, next: NextFunction): void => {
+  if (!req.user || req.user.role !== "contestant" || !req.user.contestantId) {
+    throw new ForbiddenError("Contestant access required");
+  }
+  next();
+};
