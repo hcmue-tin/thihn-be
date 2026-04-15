@@ -32,6 +32,15 @@ export class ContestState {
   @Column({ name: "background_url", type: "varchar", length: 500, nullable: true })
   backgroundUrl!: string | null;
 
+  @Column({ name: "led_background_url", type: "varchar", length: 500, nullable: true })
+  ledBackgroundUrl!: string | null;
+
+  @Column({ name: "contestant_background_url", type: "varchar", length: 500, nullable: true })
+  contestantBackgroundUrl!: string | null;
+
+  @Column({ name: "active_team_id", type: "int", nullable: true })
+  activeTeamId!: number | null;
+
   @Column({ type: "int", default: 0 })
   version!: number;
 

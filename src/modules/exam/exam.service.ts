@@ -125,6 +125,9 @@ export class ExamService {
     const existed = await this.questionRepo.findOne({ where: { id }, relations: ["options", "fillBlankAnswers"] });
     if (!existed) throw new NotFoundError("Question not found");
 
+    const merged = this.mergeQuestionInput(existed, input);
+    this.validateQuestionInput(merged);
+
     return AppDataSource.transaction(async (manager) => {
       Object.assign(existed, {
         examSetId: input.examSetId ?? existed.examSetId,
@@ -152,7 +155,7 @@ export class ExamService {
         if (options.length > 0) await manager.save(Option, options);
       }
 
-      if (input.fillBlankAnswers) {
+      if (input.fillBlankAnswers !== undefined) {
         await manager.delete(FillBlankAnswer, { questionId: id });
         const fillItems = input.fillBlankAnswers.map((item) =>
           manager.create(FillBlankAnswer, { questionId: id, acceptedAnswer: item.acceptedAnswer })
@@ -171,15 +174,54 @@ export class ExamService {
   }
 
   private validateQuestionInput(input: QuestionInput): void {
-    if (["fill_blank", "ordering", "matching"].includes(input.type) && input.fillBlankAnswers.length === 0) {
+    if (["ordering", "matching"].includes(input.type) && input.fillBlankAnswers.length === 0) {
       throw new ValidationError(`${input.type} question requires at least 1 accepted answer`);
     }
-    if (["true_false", "single_choice", "multiple_choice", "listening_choice", "fill_blank"].includes(input.type) && input.options.length === 0) {
+    if (input.type === "fill_blank") {
+      const nonempty = input.options.filter((o) => o.content.trim().length > 0);
+      if (nonempty.length < 2) {
+        throw new ValidationError("fill_blank requires at least 2 answer choices");
+      }
+      const correct = nonempty.filter((o) => o.isCorrect);
+      if (correct.length !== 1) {
+        throw new ValidationError("fill_blank requires exactly one correct answer");
+      }
+    }
+    if (["true_false", "single_choice", "multiple_choice", "listening_choice"].includes(input.type) && input.options.length === 0) {
       throw new ValidationError("Choice question requires options");
+    }
+    if (input.type === "ordering" && input.options.length === 0) {
+      throw new ValidationError("ordering question requires option fragments (A, B, C, …)");
     }
     if (input.type === "listening_choice" && !input.audioUrl) {
       throw new ValidationError("listening_choice question requires audioUrl");
     }
+  }
+
+  private mergeQuestionInput(existed: Question, input: Partial<QuestionInput>): QuestionInput {
+    return {
+      examSetId: input.examSetId ?? existed.examSetId,
+      type: input.type ?? existed.type,
+      content: input.content ?? existed.content,
+      imageUrl: input.imageUrl !== undefined ? input.imageUrl : existed.imageUrl,
+      audioUrl: input.audioUrl !== undefined ? input.audioUrl : existed.audioUrl,
+      countdownSeconds: input.countdownSeconds ?? existed.countdownSeconds,
+      score: input.score ?? existed.score,
+      orderNum: input.orderNum ?? existed.orderNum,
+      options:
+        input.options ??
+        (existed.options ?? []).map((o) => ({
+          label: o.label,
+          content: o.content,
+          isCorrect: o.isCorrect,
+          orderNum: o.orderNum
+        })),
+      fillBlankAnswers:
+        input.fillBlankAnswers ??
+        (existed.fillBlankAnswers ?? []).map((f) => ({
+          acceptedAnswer: f.acceptedAnswer
+        }))
+    };
   }
 
   private async ensureExamSetExists(examSetId: number): Promise<void> {

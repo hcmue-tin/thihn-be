@@ -82,23 +82,31 @@ const start = async (): Promise<void> => {
     if (state.screen === "rules") {
       socket.emit("screen:change", {
         screen: state.screen,
-        data: { rulesContent: state.rulesContent ?? null, backgroundUrl: state.backgroundUrl ?? null }
+        data: {
+          rulesContent: state.rulesContent ?? null,
+          backgroundUrl: state.backgroundUrl ?? null,
+          ledBackgroundUrl: state.ledBackgroundUrl ?? state.backgroundUrl ?? null,
+          contestantBackgroundUrl: state.contestantBackgroundUrl ?? state.backgroundUrl ?? null
+        }
       });
     }
     if (state.screen === "team_list") {
-      socket.emit("team-list:show", { teams: await contestService.getTeamList() });
+      const ids = state.activeTeamId != null ? [state.activeTeamId] : [];
+      socket.emit("team-list:show", { teams: await contestService.getTeamList(ids) });
     }
     if (state.currentQuestionId) {
       const { question, options } = await contestService.getQuestionDisplayData(state.currentQuestionId);
       socket.emit("question:show", {
         question,
         options,
-        countdownSeconds: question.countdownSeconds
+        countdownSeconds: question.countdownSeconds,
+        shownAt: Date.now()
       });
       if (state.screen === "reveal" && clientType === "led") {
+        const teamFilter = state.activeTeamId != null ? [state.activeTeamId] : null;
         socket.emit("answer-results:show", {
           questionId: state.currentQuestionId,
-          results: await contestService.getAnswerResultsForQuestion(state.currentQuestionId)
+          results: await contestService.getAnswerResultsForQuestion(state.currentQuestionId, teamFilter)
         });
       }
     }

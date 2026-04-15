@@ -57,14 +57,13 @@ const buildVietnameseSeedQuestions = (): SeedQuestion[] => [
   {
     type: "fill_blank",
     orderNum: 4,
-    content: "Điền từ còn thiếu: “Có công mài sắt, có ngày nên ____”.",
+    content: "Điền từ còn thiếu: “Có công mài sắt, có ngày nên {{blank}}”.",
     options: [
       { label: "A", content: "kim", isCorrect: true, orderNum: 1 },
-      { label: "B", content: "dao", isCorrect: false, orderNum: 2 },
-      { label: "C", content: "kiếm", isCorrect: false, orderNum: 3 },
-      { label: "D", content: "gươm", isCorrect: false, orderNum: 4 }
-    ],
-    fillAnswers: ["kim"]
+      { label: "B", content: "vàng", isCorrect: false, orderNum: 2 },
+      { label: "C", content: "bạc", isCorrect: false, orderNum: 3 },
+      { label: "D", content: "sắt", isCorrect: false, orderNum: 4 }
+    ]
   },
   {
     type: "single_choice",
@@ -163,6 +162,9 @@ const seed = async (): Promise<void> => {
         countdownEndAt: null,
         rulesContent: null,
         backgroundUrl: null,
+        ledBackgroundUrl: null,
+        contestantBackgroundUrl: null,
+        activeTeamId: null,
         version: 0
       })
     );

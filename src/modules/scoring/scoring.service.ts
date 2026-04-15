@@ -64,8 +64,13 @@ export class ScoringService {
           break;
         }
         case "fill_blank": {
-          const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
-          isCorrect = normalizedAccepted.includes(normalizedUser);
+          const selectedFb = (answer.selectedOptionIds ?? [])[0];
+          if (selectedFb !== undefined && correctOptionIds.length > 0) {
+            isCorrect = selectedFb === correctOptionIds[0];
+          } else {
+            const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
+            isCorrect = normalizedAccepted.length > 0 && normalizedAccepted.includes(normalizedUser);
+          }
           break;
         }
         case "ordering": {

@@ -16,13 +16,15 @@ const ensureUploadDirs = (): void => {
 
 ensureUploadDirs();
 
+const audioExt = /\.(mp3|wav|m4a|aac|ogg|opus|webm|flac)$/i;
+
 const storage = multer.diskStorage({
   destination: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
       cb(null, imageDir);
       return;
     }
-    if (file.mimetype.startsWith("audio/")) {
+    if (file.mimetype.startsWith("audio/") || audioExt.test(file.originalname)) {
       cb(null, audioDir);
       return;
     }
@@ -55,6 +57,9 @@ uploadRouter.post("/upload", uploader.single("file"), (req, res) => {
   const relativePath = normalizedPath.includes("/uploads/") ? normalizedPath.split("/uploads/")[1] : path.basename(normalizedPath);
   const fileUrl = `${host}/uploads/${relativePath}`;
   const kind = file.mimetype.startsWith("image/") ? "image" : "audio";
+  if (kind === "audio" && !file.mimetype.startsWith("audio/")) {
+    res.setHeader("X-Upload-Note", "filename-extension-audio");
+  }
 
   res.json({
     success: true,

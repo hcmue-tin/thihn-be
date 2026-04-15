@@ -35,7 +35,15 @@ export const contestantIdParamSchema = {
   })
 };
 
+export const bulkAssignTeamSchema = {
+  body: z.object({
+    contestantIds: z.array(z.number().int().positive()).min(1),
+    teamId: z.number().int().positive().nullable()
+  })
+};
+
 export type CreateContestantDto = z.infer<typeof createContestantSchema.body>;
 export type UpdateContestantDto = z.infer<typeof updateContestantSchema.body>;
 export type ContestantQueryDto = z.infer<typeof contestantQuerySchema.query>;
 export type ContestantIdParamDto = z.infer<typeof contestantIdParamSchema.params>;
+export type BulkAssignTeamDto = z.infer<typeof bulkAssignTeamSchema.body>;

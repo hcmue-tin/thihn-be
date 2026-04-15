@@ -1,5 +1,7 @@
 import bcrypt from "bcrypt";
+import * as XLSX from "xlsx";
 import { AppDataSource } from "../../config/database";
+import { env } from "../../config/env";
 import { ConflictError, NotFoundError } from "../../shared/errors/AppError";
 import { Contestant } from "./contestant.entity";
 import { Team } from "../team/team.entity";
@@ -86,6 +88,100 @@ export class ContestantService {
       throw new NotFoundError("Contestant not found");
     }
     await this.contestantRepo.remove(contestant);
+  }
+
+  async bulkAssignTeam(contestantIds: number[], teamId: number | null): Promise<void> {
+    if (teamId !== null) {
+      await this.ensureTeamExists(teamId);
+    }
+    await this.contestantRepo
+      .createQueryBuilder()
+      .update(Contestant)
+      .set({ teamId })
+      .where("id IN (:...contestantIds)", { contestantIds })
+      .execute();
+  }
+
+  async importFromSpreadsheet(
+    rows: Array<{ code: string; name: string; unit?: string | null; teamName?: string | null }>
+  ): Promise<{ created: number; skipped: number }> {
+    const plain = env.defaultContestantPassword;
+    let created = 0;
+    let skipped = 0;
+    const teams = await this.teamRepo.find();
+    const teamByName = new Map(teams.map((t) => [t.name.trim().toLowerCase(), t.id]));
+
+    for (const row of rows) {
+      const code = row.code?.trim();
+      const name = row.name?.trim();
+      if (!code || !name) {
+        skipped++;
+        continue;
+      }
+      const existed = await this.contestantRepo.findOne({ where: { code } });
+      if (existed) {
+        skipped++;
+        continue;
+      }
+      let teamId: number | null = null;
+      const tn = row.teamName?.trim();
+      if (tn) {
+        const key = tn.toLowerCase();
+        let tid = teamByName.get(key);
+        if (!tid) {
+          const createdTeam = await this.teamRepo.save(
+            this.teamRepo.create({
+              name: tn,
+              description: "Tạo tự động từ import Excel"
+            })
+          );
+          tid = createdTeam.id;
+          teamByName.set(key, tid);
+        }
+        teamId = tid;
+      }
+      const hashedPassword = await bcrypt.hash(plain, 10);
+      await this.contestantRepo.save(
+        this.contestantRepo.create({
+          teamId,
+          code,
+          password: hashedPassword,
+          name,
+          unit: row.unit?.trim() || null,
+          totalScore: 0,
+          isOnline: false
+        })
+      );
+      created++;
+    }
+    return { created, skipped };
+  }
+
+  async importFromExcelBuffer(buffer: Buffer): Promise<{ created: number; skipped: number }> {
+    const wb = XLSX.read(buffer, { type: "buffer" });
+    const first = wb.SheetNames[0];
+    if (!first) {
+      return { created: 0, skipped: 0 };
+    }
+    const sheet = wb.Sheets[first];
+    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    const rows = json.map((r) => {
+      const pick = (keys: string[]): string => {
+        for (const k of keys) {
+          if (r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== "") {
+            return String(r[k]).trim();
+          }
+        }
+        return "";
+      };
+      return {
+        code: pick(["Mã", "ma", "Ma", "code", "Code", "CODE"]),
+        name: pick(["Tên", "ten", "Ten", "name", "Name", "NAME"]),
+        unit: pick(["Đơn vị", "don_vi", "Don_vi", "unit", "Unit"]) || null,
+        teamName: pick(["Đội", "doi", "Doi", "team", "Team", "Tên đội"]) || null
+      };
+    });
+    return this.importFromSpreadsheet(rows);
   }
 
   async getHistoryByContestant(id: number): Promise<

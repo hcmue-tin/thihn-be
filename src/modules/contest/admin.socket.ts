@@ -8,7 +8,10 @@ import { ContestScreen } from "./contest.stateMachine";
 type AckResponse = { success: boolean; message?: string };
 type AckFn = (response: AckResponse) => void;
 
-const setScreenSchema = z.object({ screen: z.enum(["waiting", "rules", "team_list"]), teamIds: z.array(z.number().int().positive()).optional() });
+const setScreenSchema = z.object({
+  screen: z.enum(["waiting", "rules", "team_list"]),
+  teamIds: z.array(z.number().int().positive()).max(1).optional()
+});
 const examSetSchema = z.object({ examSetId: z.number().int().positive() });
 const questionSchema = z.object({ questionId: z.number().int().positive() });
 const teamScoreSchema = z.object({ examSetId: z.number().int().positive(), teamIds: z.array(z.number().int().positive()).optional() });
@@ -48,19 +51,27 @@ export const registerAdminSocketHandlers = (
   socket.on("admin:set-screen", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:set-screen", rawPayload ?? {}, async () => {
       const payload = setScreenSchema.parse(rawPayload);
-      const state = await contestService.setScreen(payload.screen as ContestScreen);
+      const activeTeamOpt =
+        payload.screen === "team_list" ? { activeTeamId: payload.teamIds?.[0] ?? null } : undefined;
+      const state = await contestService.setScreen(payload.screen as ContestScreen, activeTeamOpt);
+      const bgPayload = {
+        backgroundUrl: state.backgroundUrl ?? null,
+        ledBackgroundUrl: state.ledBackgroundUrl ?? state.backgroundUrl ?? null,
+        contestantBackgroundUrl: state.contestantBackgroundUrl ?? state.backgroundUrl ?? null
+      };
       if (payload.screen === "rules") {
         io.emit("screen:change", {
           screen: state.screen,
-          data: { rulesContent: state.rulesContent ?? null, backgroundUrl: state.backgroundUrl ?? null }
+          data: { rulesContent: state.rulesContent ?? null, ...bgPayload }
         });
         return;
       }
 
-      io.emit("screen:change", { screen: state.screen, data: { backgroundUrl: state.backgroundUrl ?? null } });
+      io.emit("screen:change", { screen: state.screen, data: bgPayload });
 
       if (payload.screen === "team_list") {
-        io.emit("team-list:show", { teams: await contestService.getTeamList(payload.teamIds) });
+        const listIds = state.activeTeamId != null ? [state.activeTeamId] : [];
+        io.emit("team-list:show", { teams: await contestService.getTeamList(listIds) });
       }
     });
   });
@@ -81,7 +92,8 @@ export const registerAdminSocketHandlers = (
       io.emit("question:show", {
         question: result.question,
         options: result.options,
-        countdownSeconds: result.question.countdownSeconds
+        countdownSeconds: result.question.countdownSeconds,
+        shownAt: Date.now()
       });
     });
   });
@@ -112,10 +124,13 @@ export const registerAdminSocketHandlers = (
         fillBlankAnswers: result.fillBlankAnswers,
         stats: result.stats
       });
+      const st = await contestService.getCurrentState();
+      const teamFilter = st.activeTeamId != null ? [st.activeTeamId] : null;
       io.to("led-screen").emit("answer-results:show", {
         questionId: result.questionId,
-        results: await contestService.getAnswerResultsForQuestion(result.questionId)
+        results: await contestService.getAnswerResultsForQuestion(result.questionId, teamFilter)
       });
+      io.to("led-screen").emit("led:hide-solution", {});
       result.contestantResults.forEach((item) => {
         io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
           questionId: item.questionId,
@@ -182,7 +197,8 @@ export const registerAdminSocketHandlers = (
       io.emit("question:show", {
         question: result.question,
         options: result.options,
-        countdownSeconds: result.question.countdownSeconds
+        countdownSeconds: result.question.countdownSeconds,
+        shownAt: Date.now()
       });
     });
   });

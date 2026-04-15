@@ -18,6 +18,9 @@ type UpdateStateInput = Partial<{
   countdownEndAt: Date | null;
   rulesContent: string | null;
   backgroundUrl: string | null;
+  ledBackgroundUrl: string | null;
+  contestantBackgroundUrl: string | null;
+  activeTeamId: number | null;
 }>;
 
 export class ContestService {
@@ -51,6 +54,9 @@ export class ContestService {
           countdownEndAt: null,
           rulesContent: null,
           backgroundUrl: null,
+          ledBackgroundUrl: null,
+          contestantBackgroundUrl: null,
+          activeTeamId: null,
           version: 0
         })
       );
@@ -59,19 +65,22 @@ export class ContestService {
   }
 
   async updateContestState(expectedVersion: number, patch: UpdateStateInput): Promise<ContestState> {
+    const setPayload: Record<string, unknown> = { version: () => "version + 1" };
+    if (patch.screen !== undefined) setPayload.screen = patch.screen;
+    if (patch.currentExamSetId !== undefined) setPayload.currentExamSetId = patch.currentExamSetId;
+    if (patch.currentQuestionId !== undefined) setPayload.currentQuestionId = patch.currentQuestionId;
+    if (patch.isCountdownActive !== undefined) setPayload.isCountdownActive = patch.isCountdownActive;
+    if (patch.countdownEndAt !== undefined) setPayload.countdownEndAt = patch.countdownEndAt;
+    if (patch.rulesContent !== undefined) setPayload.rulesContent = patch.rulesContent;
+    if (patch.backgroundUrl !== undefined) setPayload.backgroundUrl = patch.backgroundUrl;
+    if (patch.ledBackgroundUrl !== undefined) setPayload.ledBackgroundUrl = patch.ledBackgroundUrl;
+    if (patch.contestantBackgroundUrl !== undefined) setPayload.contestantBackgroundUrl = patch.contestantBackgroundUrl;
+    if (patch.activeTeamId !== undefined) setPayload.activeTeamId = patch.activeTeamId;
+
     const result = await this.contestStateRepo
       .createQueryBuilder()
       .update(ContestState)
-      .set({
-        screen: patch.screen,
-        currentExamSetId: patch.currentExamSetId,
-        currentQuestionId: patch.currentQuestionId,
-        isCountdownActive: patch.isCountdownActive,
-        countdownEndAt: patch.countdownEndAt,
-        rulesContent: patch.rulesContent,
-        backgroundUrl: patch.backgroundUrl,
-        version: () => "version + 1"
-      })
+      .set(setPayload)
       .where("id = :id", { id: 1 })
       .andWhere("version = :version", { version: expectedVersion })
       .execute();
@@ -83,10 +92,14 @@ export class ContestService {
     return this.getCurrentState();
   }
 
-  async setScreen(nextScreen: ContestScreen): Promise<ContestState> {
+  async setScreen(nextScreen: ContestScreen, opts?: { activeTeamId?: number | null }): Promise<ContestState> {
     const current = await this.getCurrentState();
     assertTransition(current.screen, nextScreen);
-    return this.updateContestState(current.version, { screen: nextScreen });
+    const patch: UpdateStateInput = { screen: nextScreen };
+    if (opts && "activeTeamId" in opts) {
+      patch.activeTeamId = opts.activeTeamId ?? null;
+    }
+    return this.updateContestState(current.version, patch);
   }
 
   async selectExamSet(examSetId: number): Promise<ContestState> {
@@ -228,13 +241,27 @@ export class ContestService {
     return this.updateContestState(current.version, { rulesContent });
   }
 
-  async updateDisplayConfig(input: { rulesContent: string; backgroundUrl: string | null }): Promise<ContestState> {
+  async updateDisplayConfig(input: {
+    rulesContent: string;
+    backgroundUrl?: string | null;
+    ledBackgroundUrl?: string | null;
+    contestantBackgroundUrl?: string | null;
+  }): Promise<ContestState> {
     await this.ensureContestStateExists();
     const current = await this.getCurrentState();
-    return this.updateContestState(current.version, {
-      rulesContent: input.rulesContent,
-      backgroundUrl: input.backgroundUrl
-    });
+    const patch: UpdateStateInput = { rulesContent: input.rulesContent };
+    if (input.ledBackgroundUrl !== undefined) {
+      patch.ledBackgroundUrl = input.ledBackgroundUrl;
+    }
+    if (input.contestantBackgroundUrl !== undefined) {
+      patch.contestantBackgroundUrl = input.contestantBackgroundUrl;
+    }
+    if (input.backgroundUrl !== undefined) {
+      patch.backgroundUrl = input.backgroundUrl;
+      if (input.ledBackgroundUrl === undefined) patch.ledBackgroundUrl = input.backgroundUrl;
+      if (input.contestantBackgroundUrl === undefined) patch.contestantBackgroundUrl = input.backgroundUrl;
+    }
+    return this.updateContestState(current.version, patch);
   }
 
   async retakeQuestion(questionId: number): Promise<void> {
@@ -250,9 +277,6 @@ export class ContestService {
       .getRawMany<{ contestantId: string }>();
 
     const contestantIds = contestantRows.map((row) => Number(row.contestantId));
-    if (contestantIds.length === 0) {
-      return;
-    }
 
     await AppDataSource.transaction(async (manager) => {
       await manager
@@ -262,6 +286,10 @@ export class ContestService {
         .where("question_id = :questionId", { questionId })
         .andWhere("exam_set_id = :examSetId", { examSetId: question.examSetId })
         .execute();
+
+      if (contestantIds.length === 0) {
+        return;
+      }
 
       const totals = await manager
         .createQueryBuilder()
@@ -283,7 +311,11 @@ export class ContestService {
     });
   }
 
-  async getTeamList(teamIds?: number[]): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {
+  async getTeamList(teamIds?: number[] | null): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {
+    if (teamIds !== undefined && teamIds !== null && teamIds.length === 0) {
+      return [];
+    }
+
     let qb = AppDataSource.createQueryBuilder()
       .select("t.id", "teamId")
       .addSelect("t.name", "teamName")
@@ -328,27 +360,71 @@ export class ContestService {
   }
 
   async getAnswerResultsForQuestion(
-    questionId: number
-  ): Promise<Array<{ contestantId: number; contestantName: string; teamName: string; hasSubmitted: boolean; isCorrect: boolean | null; scoreEarned: number }>> {
-    const rows = await AppDataSource.createQueryBuilder()
+    questionId: number,
+    filterTeamIds?: number[] | null
+  ): Promise<
+    Array<{
+      contestantId: number;
+      contestantName: string;
+      teamName: string;
+      hasSubmitted: boolean;
+      isCorrect: boolean | null;
+      scoreEarned: number;
+      answerSummary: string | null;
+    }>
+  > {
+    let qb = AppDataSource.createQueryBuilder()
       .select("c.id", "contestantId")
       .addSelect("c.name", "contestantName")
       .addSelect("COALESCE(t.name, 'Chưa có đội')", "teamName")
+      .addSelect("c.team_id", "teamId")
       .addSelect("(COALESCE(JSON_LENGTH(a.selected_option_ids), 0) > 0 OR COALESCE(TRIM(a.fill_text), '') <> '')", "hasSubmitted")
       .addSelect("a.is_correct", "isCorrect")
       .addSelect("COALESCE(a.score_earned, 0)", "scoreEarned")
+      .addSelect("a.fill_text", "fillText")
+      .addSelect("a.selected_option_ids", "selectedOptionIds")
       .from("contestants", "c")
       .leftJoin("teams", "t", "t.id = c.team_id")
       .leftJoin("answers", "a", "a.contestant_id = c.id AND a.question_id = :questionId", { questionId })
-      .orderBy("c.name", "ASC")
-      .getRawMany<{
-        contestantId: string;
-        contestantName: string;
-        teamName: string;
-        hasSubmitted: number | boolean;
-        isCorrect: number | boolean | null;
-        scoreEarned: string;
-      }>();
+      .orderBy("c.name", "ASC");
+
+    if (filterTeamIds !== undefined && filterTeamIds !== null && filterTeamIds.length > 0) {
+      qb = qb.andWhere("c.team_id IN (:...filterTeamIds)", { filterTeamIds });
+    }
+
+    const rows = await qb.getRawMany<{
+      contestantId: string;
+      contestantName: string;
+      teamName: string;
+      teamId: string | null;
+      hasSubmitted: number | boolean;
+      isCorrect: number | boolean | null;
+      scoreEarned: string;
+      fillText: string | null;
+      selectedOptionIds: string | number[] | null;
+    }>();
+
+    const options = await this.optionRepo.find({ where: { questionId }, order: { orderNum: "ASC" } });
+    const idToLabel = new Map(options.map((o) => [o.id, o.label]));
+
+    const formatSummary = (fillText: string | null, rawSelected: string | number[] | null): string | null => {
+      const text = fillText?.trim();
+      if (text) return text;
+      let ids: number[] = [];
+      if (Array.isArray(rawSelected)) {
+        ids = rawSelected.map(Number);
+      } else if (typeof rawSelected === "string" && rawSelected.trim()) {
+        try {
+          const parsed = JSON.parse(rawSelected) as unknown;
+          if (Array.isArray(parsed)) ids = parsed.map(Number);
+        } catch {
+          return null;
+        }
+      }
+      if (ids.length === 0) return null;
+      const labels = ids.map((id) => idToLabel.get(id) ?? "?").join(", ");
+      return labels;
+    };
 
     return rows.map((row) => ({
       contestantId: Number(row.contestantId),
@@ -356,7 +432,8 @@ export class ContestService {
       teamName: row.teamName,
       hasSubmitted: Boolean(row.hasSubmitted),
       isCorrect: row.isCorrect === null ? null : Boolean(row.isCorrect),
-      scoreEarned: Number(row.scoreEarned)
+      scoreEarned: Number(row.scoreEarned),
+      answerSummary: formatSummary(row.fillText, row.selectedOptionIds)
     }));
   }
 
