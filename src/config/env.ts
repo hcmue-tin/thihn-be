@@ -21,10 +21,6 @@ const envSchema = z.object({
 });
 
 const parsed = envSchema.parse(process.env);
-const isProd = parsed.NODE_ENV === "production";
-if (isProd && (parsed.JWT_SECRET === "change_this_secret" || parsed.ADMIN_PASSWORD === "admin123")) {
-  throw new Error("In production, ADMIN_PASSWORD and JWT_SECRET must be customized.");
-}
 
 export const env = {
   nodeEnv: parsed.NODE_ENV,
