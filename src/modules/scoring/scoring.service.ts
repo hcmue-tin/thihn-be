@@ -27,6 +27,38 @@ export class ScoringService {
       .replace(/\s+/g, " ");
   }
 
+  private canonicalizeMatchingAnswer(value: string): string {
+    const pairs = value
+      .replace(/\n/g, ";")
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => item.replace(/\./g, ":"))
+      .map((item) => {
+        const [left, right] = item.split(":").map((s) => s.trim());
+        return { left: Number(left), right: (right ?? "").toUpperCase() };
+      })
+      .filter((item) => Number.isInteger(item.left) && item.left > 0 && /^[A-Z]$/.test(item.right))
+      .sort((a, b) => a.left - b.left);
+
+    if (pairs.length === 0) return "";
+    return pairs.map((item) => `${item.left}:${item.right}`).join(";");
+  }
+
+  private normalizeMatchingAcceptedAnswers(fillBlankAnswers: FillBlankAnswer[]): string[] {
+    const raw = fillBlankAnswers.map((item) => item.acceptedAnswer.trim()).filter(Boolean);
+    if (raw.length === 0) return [];
+
+    const isPairToken = (value: string) => /^\d+\s*[:.]\s*[A-Za-z]$/.test(value.trim());
+    const legacyMerged = raw.every(isPairToken) ? [raw.join(";")] : [];
+
+    const normalized = [...legacyMerged, ...raw]
+      .map((item) => this.canonicalizeMatchingAnswer(item))
+      .filter(Boolean);
+
+    return [...new Set(normalized)];
+  }
+
   async scoreAll(questionId: number): Promise<ScoringResult> {
     const question = await this.questionRepo.findOne({ where: { id: questionId } });
     if (!question) throw new NotFoundError("Question not found");
@@ -43,6 +75,7 @@ export class ScoringService {
 
     const correctOptionIds = options.filter((o) => o.isCorrect).map((o) => o.id).sort((a, b) => a - b);
     const normalizedAccepted = fillBlankAnswers.map((item) => this.normalizeFillBlank(item.acceptedAnswer));
+    const normalizedMatchingAccepted = this.normalizeMatchingAcceptedAnswers(fillBlankAnswers);
 
     const evaluated = answers.map((answer) => {
       let isCorrect = false;
@@ -79,8 +112,8 @@ export class ScoringService {
           break;
         }
         case "matching": {
-          const normalizedUser = this.normalizeFillBlank(answer.fillText ?? "");
-          isCorrect = normalizedAccepted.includes(normalizedUser);
+          const normalizedUser = this.canonicalizeMatchingAnswer(answer.fillText ?? "");
+          isCorrect = normalizedUser.length > 0 && normalizedMatchingAccepted.includes(normalizedUser);
           break;
         }
       }

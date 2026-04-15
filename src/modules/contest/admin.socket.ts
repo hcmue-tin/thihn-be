@@ -4,18 +4,7 @@ import { AppError } from "../../shared/errors/AppError";
 import { logger } from "../../shared/utils/logger";
 import { ContestService } from "./contest.service";
 import { ContestScreen } from "./contest.stateMachine";
-
-type AckResponse = { success: boolean; message?: string };
-type AckFn = (response: AckResponse) => void;
-
-const setScreenSchema = z.object({
-  screen: z.enum(["waiting", "rules", "team_list"]),
-  teamIds: z.array(z.number().int().positive()).max(1).optional()
-});
-const examSetSchema = z.object({ examSetId: z.number().int().positive() });
-const questionSchema = z.object({ questionId: z.number().int().positive() });
-const teamScoreSchema = z.object({ examSetId: z.number().int().positive(), teamIds: z.array(z.number().int().positive()).optional() });
-const leaderboardSchema = z.object({ teamIds: z.array(z.number().int().positive()).optional() });
+import { AckFn, examSetSchema, leaderboardSchema, questionSchema, setScreenSchema, teamScoreSchema } from "./contest.contracts";
 
 export const registerAdminSocketHandlers = (
   io: Server,
@@ -25,6 +14,31 @@ export const registerAdminSocketHandlers = (
   clearCountdownEnd: () => void
 ): void => {
   const actor = (socket.data.user?.actor as string) || "system_admin";
+  let pendingContestantResults: Array<{
+    contestantId: number;
+    questionId: number;
+    isCorrect: boolean;
+    scoreEarned: number;
+    totalScore: number;
+  }> | null = null;
+  const emitRevealState = async (questionId: number, filterByActiveTeam: boolean): Promise<void> => {
+    const result = await contestService.showAnswer(questionId);
+    io.emit("countdown:end", {});
+    io.emit("screen:change", { screen: result.state.screen });
+    io.emit("answer:reveal", {
+      questionId: result.questionId,
+      correctOptionIds: result.correctOptionIds,
+      fillBlankAnswers: result.fillBlankAnswers,
+      stats: result.stats
+    });
+    const teamFilter = filterByActiveTeam ? await contestService.getActiveTeamFilter() : null;
+    io.to("led-screen").emit("answer-results:show", {
+      questionId: result.questionId,
+      results: await contestService.getAnswerResultsForQuestion(result.questionId, teamFilter)
+    });
+    io.to("led-screen").emit("led:hide-solution", {});
+    pendingContestantResults = result.contestantResults;
+  };
 
   const safeHandle = async (
     ack: AckFn | undefined,
@@ -86,6 +100,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:show-question", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:show-question", rawPayload ?? {}, async () => {
+      pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
       const result = await contestService.showQuestion(payload.questionId);
       io.emit("screen:change", { screen: result.state.screen });
@@ -100,6 +115,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:start-countdown", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:start-countdown", rawPayload ?? {}, async () => {
+      pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
       const result = await contestService.startCountdown(payload.questionId);
       io.emit("screen:change", { screen: result.state.screen });
@@ -115,30 +131,7 @@ export const registerAdminSocketHandlers = (
       if (!state.currentQuestionId) {
         throw new AppError("No active question to reveal", 400);
       }
-      const result = await contestService.showAnswer(state.currentQuestionId);
-      io.emit("countdown:end", {});
-      io.emit("screen:change", { screen: result.state.screen });
-      io.emit("answer:reveal", {
-        questionId: result.questionId,
-        correctOptionIds: result.correctOptionIds,
-        fillBlankAnswers: result.fillBlankAnswers,
-        stats: result.stats
-      });
-      const st = await contestService.getCurrentState();
-      const teamFilter = st.activeTeamId != null ? [st.activeTeamId] : null;
-      io.to("led-screen").emit("answer-results:show", {
-        questionId: result.questionId,
-        results: await contestService.getAnswerResultsForQuestion(result.questionId, teamFilter)
-      });
-      io.to("led-screen").emit("led:hide-solution", {});
-      result.contestantResults.forEach((item) => {
-        io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
-          questionId: item.questionId,
-          isCorrect: item.isCorrect,
-          scoreEarned: item.scoreEarned,
-          totalScore: item.totalScore
-        });
-      });
+      await emitRevealState(state.currentQuestionId, true);
     });
   });
 
@@ -146,27 +139,7 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:show-answer", rawPayload ?? {}, async () => {
       clearCountdownEnd();
       const payload = questionSchema.parse(rawPayload);
-      const result = await contestService.showAnswer(payload.questionId);
-      io.emit("countdown:end", {});
-      io.emit("screen:change", { screen: result.state.screen });
-      io.emit("answer:reveal", {
-        questionId: result.questionId,
-        correctOptionIds: result.correctOptionIds,
-        fillBlankAnswers: result.fillBlankAnswers,
-        stats: result.stats
-      });
-      io.to("led-screen").emit("answer-results:show", {
-        questionId: result.questionId,
-        results: await contestService.getAnswerResultsForQuestion(result.questionId)
-      });
-      result.contestantResults.forEach((item) => {
-        io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
-          questionId: item.questionId,
-          isCorrect: item.isCorrect,
-          scoreEarned: item.scoreEarned,
-          totalScore: item.totalScore
-        });
-      });
+      await emitRevealState(payload.questionId, false);
     });
   });
 
@@ -190,7 +163,9 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:retake-question", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:retake-question", rawPayload ?? {}, async () => {
+      pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
+      clearCountdownEnd();
       await contestService.retakeQuestion(payload.questionId);
       const result = await contestService.showQuestion(payload.questionId);
       io.emit("screen:change", { screen: result.state.screen, data: { backgroundUrl: result.state.backgroundUrl ?? null } });
@@ -217,8 +192,31 @@ export const registerAdminSocketHandlers = (
     });
   });
 
+  socket.on("admin:reveal-solution-on-led", async (_rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:reveal-solution-on-led", {}, async () => {
+      const state = await contestService.getCurrentState();
+      if (state.screen !== "reveal") {
+        throw new AppError("Can only show LED solution in reveal screen", 400);
+      }
+      if (!pendingContestantResults || pendingContestantResults.length === 0) {
+        throw new AppError("No pending contestant results to reveal", 400);
+      }
+      io.to("led-screen").emit("led:show-solution", {});
+      pendingContestantResults.forEach((item) => {
+        io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
+          questionId: item.questionId,
+          isCorrect: item.isCorrect,
+          scoreEarned: item.scoreEarned,
+          totalScore: item.totalScore
+        });
+      });
+      pendingContestantResults = null;
+    });
+  });
+
   socket.on("admin:reset-session", async (_rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:reset-session", {}, async () => {
+      pendingContestantResults = null;
       clearCountdownEnd();
       const state = await contestService.resetSession();
       io.emit("countdown:end", {});

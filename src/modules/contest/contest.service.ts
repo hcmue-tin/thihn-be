@@ -41,6 +41,12 @@ export class ContestService {
     return state;
   }
 
+  private async getQuestionById(questionId: number): Promise<Question> {
+    const question = await this.questionRepo.findOne({ where: { id: questionId } });
+    if (!question) throw new NotFoundError("Question not found");
+    return question;
+  }
+
   private async ensureContestStateExists(): Promise<ContestState> {
     let state = await this.contestStateRepo.findOne({ where: { id: 1 } });
     if (!state) {
@@ -111,8 +117,7 @@ export class ContestService {
   }
 
   async showQuestion(questionId: number): Promise<{ state: ContestState; question: Question; options: Option[] }> {
-    const question = await this.questionRepo.findOne({ where: { id: questionId } });
-    if (!question) throw new NotFoundError("Question not found");
+    const question = await this.getQuestionById(questionId);
 
     const current = await this.getCurrentState();
     assertTransition(current.screen, "question");
@@ -129,15 +134,13 @@ export class ContestService {
   }
 
   async getQuestionDisplayData(questionId: number): Promise<{ question: Question; options: Option[] }> {
-    const question = await this.questionRepo.findOne({ where: { id: questionId } });
-    if (!question) throw new NotFoundError("Question not found");
+    const question = await this.getQuestionById(questionId);
     const options = await this.optionRepo.find({ where: { questionId }, order: { orderNum: "ASC" } });
     return { question, options };
   }
 
   async startCountdown(questionId: number): Promise<{ state: ContestState; seconds: number; endsAt: number }> {
-    const question = await this.questionRepo.findOne({ where: { id: questionId } });
-    if (!question) throw new NotFoundError("Question not found");
+    const question = await this.getQuestionById(questionId);
 
     const current = await this.getCurrentState();
     assertTransition(current.screen, "countdown");
@@ -169,8 +172,7 @@ export class ContestService {
     stats: Record<string, number>;
     contestantResults: Array<{ contestantId: number; questionId: number; isCorrect: boolean; scoreEarned: number; totalScore: number }>;
   }> {
-    const question = await this.questionRepo.findOne({ where: { id: questionId } });
-    if (!question) throw new NotFoundError("Question not found");
+    const question = await this.getQuestionById(questionId);
 
     const current = await this.getCurrentState();
     assertTransition(current.screen, "reveal");
@@ -265,8 +267,7 @@ export class ContestService {
   }
 
   async retakeQuestion(questionId: number): Promise<void> {
-    const question = await this.questionRepo.findOne({ where: { id: questionId } });
-    if (!question) throw new NotFoundError("Question not found");
+    const question = await this.getQuestionById(questionId);
 
     const contestantRows = await AppDataSource.createQueryBuilder()
       .select("a.contestant_id", "contestantId")
@@ -359,6 +360,11 @@ export class ContestService {
     return [...grouped.values()];
   }
 
+  async getActiveTeamFilter(): Promise<number[] | null> {
+    const state = await this.getCurrentState();
+    return state.activeTeamId != null ? [state.activeTeamId] : null;
+  }
+
   async getAnswerResultsForQuestion(
     questionId: number,
     filterTeamIds?: number[] | null
@@ -378,7 +384,8 @@ export class ContestService {
       .addSelect("c.name", "contestantName")
       .addSelect("COALESCE(t.name, 'Chưa có đội')", "teamName")
       .addSelect("c.team_id", "teamId")
-      .addSelect("(COALESCE(JSON_LENGTH(a.selected_option_ids), 0) > 0 OR COALESCE(TRIM(a.fill_text), '') <> '')", "hasSubmitted")
+      .addSelect("a.id", "answerId")
+      .addSelect("a.submitted_at", "submittedAt")
       .addSelect("a.is_correct", "isCorrect")
       .addSelect("COALESCE(a.score_earned, 0)", "scoreEarned")
       .addSelect("a.fill_text", "fillText")
@@ -397,7 +404,8 @@ export class ContestService {
       contestantName: string;
       teamName: string;
       teamId: string | null;
-      hasSubmitted: number | boolean;
+      answerId: string | null;
+      submittedAt: string | null;
       isCorrect: number | boolean | null;
       scoreEarned: string;
       fillText: string | null;
@@ -430,7 +438,7 @@ export class ContestService {
       contestantId: Number(row.contestantId),
       contestantName: row.contestantName,
       teamName: row.teamName,
-      hasSubmitted: Boolean(row.hasSubmitted),
+      hasSubmitted: row.answerId !== null || row.submittedAt !== null,
       isCorrect: row.isCorrect === null ? null : Boolean(row.isCorrect),
       scoreEarned: Number(row.scoreEarned),
       answerSummary: formatSummary(row.fillText, row.selectedOptionIds)

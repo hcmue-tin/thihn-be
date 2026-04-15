@@ -1,6 +1,7 @@
 import { AppDataSource } from "../../config/database";
 import { AppError } from "../../shared/errors/AppError";
 import { ContestState } from "../contest/contestState.entity";
+import { Contestant } from "../contestant/contestant.entity";
 import { Answer } from "./answer.entity";
 
 type SubmitInput = {
@@ -12,6 +13,7 @@ type SubmitInput = {
 
 export class SubmissionService {
   private contestStateRepo = AppDataSource.getRepository(ContestState);
+  private contestantRepo = AppDataSource.getRepository(Contestant);
   private answerRepo = AppDataSource.getRepository(Answer);
 
   async submit(input: SubmitInput): Promise<{ questionId: number; timestamp: number }> {
@@ -26,6 +28,16 @@ export class SubmissionService {
 
     if (state.currentQuestionId !== input.questionId) {
       throw new AppError("Question is not active", 400);
+    }
+
+    if (state.activeTeamId != null) {
+      const contestant = await this.contestantRepo.findOne({ where: { id: input.contestantId } });
+      if (!contestant) {
+        throw new AppError("Contestant not found", 404);
+      }
+      if (contestant.teamId !== state.activeTeamId) {
+        throw new AppError("Current round is not for your team", 403);
+      }
     }
 
     const submittedAt = new Date();

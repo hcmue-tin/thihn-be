@@ -19,6 +19,6 @@ export const AppDataSource = new DataSource({
   password: env.dbPassword,
   database: env.dbName,
   entities: [Team, Contestant, ExamSet, Question, Option, FillBlankAnswer, Answer, ContestState, AuditLog],
-  synchronize: true,
+  synchronize: env.dbSynchronize,
   logging: false
 });

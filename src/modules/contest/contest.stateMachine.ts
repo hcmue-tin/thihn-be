@@ -9,7 +9,7 @@ const validTransitions: Record<ContestScreen, ContestScreen[]> = {
   rules: ["waiting", "team_list", "question"],
   team_list: ["waiting", "rules", "question"],
   question: ["countdown"],
-  countdown: ["reveal"],
+  countdown: ["question", "reveal"],
   reveal: ["question", "team_score", "waiting"],
   team_score: ["question", "leaderboard", "waiting"],
   leaderboard: ["waiting"]
