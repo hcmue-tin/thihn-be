@@ -11,16 +11,20 @@ type TeamScoreItem = {
 
 export class LeaderboardService {
   async getTeamScores(examSetId: number, teamIds?: number[]): Promise<TeamScoreItem[]> {
-    let qb = AppDataSource.getRepository(Answer)
-      .createQueryBuilder("a")
-      .innerJoin("contestants", "c", "c.id = a.contestant_id")
-      .innerJoin("teams", "t", "t.id = c.team_id")
+    let qb = AppDataSource.createQueryBuilder()
       .select("t.id", "teamId")
       .addSelect("t.name", "teamName")
       .addSelect("c.id", "contestantId")
       .addSelect("c.name", "contestantName")
       .addSelect("COALESCE(SUM(a.score_earned), 0)", "score")
-      .where("a.exam_set_id = :examSetId", { examSetId });
+      .from("teams", "t")
+      .innerJoin("contestants", "c", "c.team_id = t.id")
+      .leftJoin(
+        "answers",
+        "a",
+        "a.contestant_id = c.id AND a.exam_set_id = :examSetId",
+        { examSetId }
+      );
 
     if (teamIds && teamIds.length > 0) {
       qb = qb.andWhere("t.id IN (:...teamIds)", { teamIds });
@@ -76,14 +80,14 @@ export class LeaderboardService {
     if (teamIds && teamIds.length > 0) {
       qb = qb.where("t.id IN (:...teamIds)", { teamIds });
     }
-    qb = qb.andWhere("c.total_score > 0");
 
     const rows = await qb
       .orderBy("c.total_score", "DESC")
       .addOrderBy("c.id", "ASC")
       .getRawMany<{ contestantId: string; contestantName: string; teamId: string; teamName: string; totalScore: string }>();
 
-    return rows.map((row, index) => ({
+    const limited = rows.slice(0, 20);
+    return limited.map((row, index) => ({
       rank: index + 1,
       contestantId: Number(row.contestantId),
       name: row.contestantName,

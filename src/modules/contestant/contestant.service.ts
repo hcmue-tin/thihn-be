@@ -1,7 +1,6 @@
 import bcrypt from "bcrypt";
 import * as XLSX from "xlsx";
 import { AppDataSource } from "../../config/database";
-import { env } from "../../config/env";
 import { ConflictError, NotFoundError } from "../../shared/errors/AppError";
 import { Contestant } from "./contestant.entity";
 import { Team } from "../team/team.entity";
@@ -103,9 +102,8 @@ export class ContestantService {
   }
 
   async importFromSpreadsheet(
-    rows: Array<{ code: string; name: string; unit?: string | null; teamName?: string | null }>
+    rows: Array<{ code: string; name: string; password: string; unit?: string | null; teamName?: string | null }>
   ): Promise<{ created: number; skipped: number }> {
-    const plain = env.defaultContestantPassword;
     let created = 0;
     let skipped = 0;
     const teams = await this.teamRepo.find();
@@ -114,7 +112,8 @@ export class ContestantService {
     for (const row of rows) {
       const code = row.code?.trim();
       const name = row.name?.trim();
-      if (!code || !name) {
+      const password = row.password?.trim();
+      if (!code || !name || !password) {
         skipped++;
         continue;
       }
@@ -140,7 +139,7 @@ export class ContestantService {
         }
         teamId = tid;
       }
-      const hashedPassword = await bcrypt.hash(plain, 10);
+      const hashedPassword = await bcrypt.hash(password, 10);
       await this.contestantRepo.save(
         this.contestantRepo.create({
           teamId,
@@ -177,6 +176,7 @@ export class ContestantService {
       return {
         code: pick(["Mã", "ma", "Ma", "code", "Code", "CODE"]),
         name: pick(["Tên", "ten", "Ten", "name", "Name", "NAME"]),
+        password: pick(["Mật khẩu", "mat_khau", "Mat_khau", "password", "Password", "PASSWORD"]),
         unit: pick(["Đơn vị", "don_vi", "Don_vi", "unit", "Unit"]) || null,
         teamName: pick(["Đội", "doi", "Doi", "team", "Team", "Tên đội"]) || null
       };

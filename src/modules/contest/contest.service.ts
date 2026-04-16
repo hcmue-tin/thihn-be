@@ -116,7 +116,10 @@ export class ContestService {
     return this.updateContestState(current.version, { currentExamSetId: examSetId });
   }
 
-  async showQuestion(questionId: number): Promise<{ state: ContestState; question: Question; options: Option[] }> {
+  async showQuestion(
+    questionId: number,
+    opts?: { activeTeamId?: number | null }
+  ): Promise<{ state: ContestState; question: Question; options: Option[] }> {
     const question = await this.getQuestionById(questionId);
 
     const current = await this.getCurrentState();
@@ -126,7 +129,8 @@ export class ContestService {
       currentQuestionId: questionId,
       currentExamSetId: question.examSetId,
       isCountdownActive: false,
-      countdownEndAt: null
+      countdownEndAt: null,
+      ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
     });
 
     const options = await this.optionRepo.find({ where: { questionId }, order: { orderNum: "ASC" } });
@@ -139,7 +143,7 @@ export class ContestService {
     return { question, options };
   }
 
-  async startCountdown(questionId: number): Promise<{ state: ContestState; seconds: number; endsAt: number }> {
+  async startCountdown(questionId: number, opts?: { activeTeamId?: number | null }): Promise<{ state: ContestState; seconds: number; endsAt: number }> {
     const question = await this.getQuestionById(questionId);
 
     const current = await this.getCurrentState();
@@ -151,7 +155,8 @@ export class ContestService {
       currentQuestionId: questionId,
       currentExamSetId: question.examSetId,
       isCountdownActive: true,
-      countdownEndAt: endsAt
+      countdownEndAt: endsAt,
+      ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
     });
 
     return { state, seconds: question.countdownSeconds, endsAt: endsAt.getTime() };
@@ -195,20 +200,33 @@ export class ContestService {
     };
   }
 
-  async showTeamScore(examSetId: number, teamIds?: number[]): Promise<{ state: ContestState; examSetId: number; teams: unknown[] }> {
+  async showTeamScore(
+    examSetId: number,
+    teamIds?: number[],
+    opts?: { activeTeamId?: number | null }
+  ): Promise<{ state: ContestState; examSetId: number; teams: unknown[] }> {
     const examSet = await this.examSetRepo.findOne({ where: { id: examSetId } });
     if (!examSet) throw new NotFoundError("Exam set not found");
     const current = await this.getCurrentState();
     assertTransition(current.screen, "team_score");
-    const state = await this.updateContestState(current.version, { screen: "team_score" });
+    const state = await this.updateContestState(current.version, {
+      screen: "team_score",
+      ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
+    });
     const teams = await this.leaderboardService.getTeamScores(examSetId, teamIds);
     return { state, examSetId, teams };
   }
 
-  async showLeaderboard(teamIds?: number[]): Promise<{ state: ContestState; rankings: Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }> }> {
+  async showLeaderboard(
+    teamIds?: number[],
+    opts?: { activeTeamId?: number | null }
+  ): Promise<{ state: ContestState; rankings: Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }> }> {
     const current = await this.getCurrentState();
     assertTransition(current.screen, "leaderboard");
-    const state = await this.updateContestState(current.version, { screen: "leaderboard" });
+    const state = await this.updateContestState(current.version, {
+      screen: "leaderboard",
+      ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
+    });
     const rankings = await this.leaderboardService.getFinalRankings(teamIds);
     return { state, rankings };
   }
@@ -230,6 +248,12 @@ export class ContestService {
       isCountdownActive: false,
       countdownEndAt: null
     });
+  }
+
+  async setActiveTeam(activeTeamId: number | null): Promise<ContestState> {
+    await this.ensureContestStateExists();
+    const current = await this.getCurrentState();
+    return this.updateContestState(current.version, { activeTeamId });
   }
 
   async getRulesContent(): Promise<string | null> {

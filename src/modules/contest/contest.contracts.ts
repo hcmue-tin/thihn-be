@@ -18,12 +18,23 @@ export const setScreenSchema = z.object({
 });
 
 export const examSetSchema = z.object({ examSetId: z.number().int().positive() });
-export const questionSchema = z.object({ questionId: z.number().int().positive() });
+const optionalActiveTeamIdSchema = z.number().int().positive().nullable().optional();
+export const setActiveTeamSchema = z.object({
+  activeTeamId: z.number().int().positive().nullable()
+});
+export const questionSchema = z.object({
+  questionId: z.number().int().positive(),
+  activeTeamId: optionalActiveTeamIdSchema
+});
 export const teamScoreSchema = z.object({
   examSetId: z.number().int().positive(),
-  teamIds: z.array(z.number().int().positive()).optional()
+  teamIds: z.array(z.number().int().positive()).optional(),
+  activeTeamId: optionalActiveTeamIdSchema
 });
-export const leaderboardSchema = z.object({ teamIds: z.array(z.number().int().positive()).optional() });
+export const leaderboardSchema = z.object({
+  teamIds: z.array(z.number().int().positive()).optional(),
+  activeTeamId: optionalActiveTeamIdSchema
+});
 
 export type AckResponse = { success: boolean; message?: string };
 export type AckFn = (response: AckResponse) => void;

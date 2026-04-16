@@ -4,7 +4,7 @@ import { AppError } from "../../shared/errors/AppError";
 import { logger } from "../../shared/utils/logger";
 import { ContestService } from "./contest.service";
 import { ContestScreen } from "./contest.stateMachine";
-import { AckFn, examSetSchema, leaderboardSchema, questionSchema, setScreenSchema, teamScoreSchema } from "./contest.contracts";
+import { AckFn, examSetSchema, leaderboardSchema, questionSchema, setActiveTeamSchema, setScreenSchema, teamScoreSchema } from "./contest.contracts";
 
 export const registerAdminSocketHandlers = (
   io: Server,
@@ -66,7 +66,7 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:set-screen", rawPayload ?? {}, async () => {
       const payload = setScreenSchema.parse(rawPayload);
       const activeTeamOpt =
-        payload.screen === "team_list" ? { activeTeamId: payload.teamIds?.[0] ?? null } : undefined;
+        payload.teamIds && payload.teamIds.length > 0 ? { activeTeamId: payload.teamIds[0] ?? null } : undefined;
       const state = await contestService.setScreen(payload.screen as ContestScreen, activeTeamOpt);
       const bgPayload = {
         backgroundUrl: state.backgroundUrl ?? null,
@@ -90,6 +90,14 @@ export const registerAdminSocketHandlers = (
     });
   });
 
+  socket.on("admin:set-active-team", async (rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:set-active-team", rawPayload ?? {}, async () => {
+      const payload = setActiveTeamSchema.parse(rawPayload);
+      const state = await contestService.setActiveTeam(payload.activeTeamId ?? null);
+      io.emit("contest:sync-state", { fullState: state });
+    });
+  });
+
   socket.on("admin:select-exam-set", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:select-exam-set", rawPayload ?? {}, async () => {
       const payload = examSetSchema.parse(rawPayload);
@@ -102,7 +110,7 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:show-question", rawPayload ?? {}, async () => {
       pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
-      const result = await contestService.showQuestion(payload.questionId);
+      const result = await contestService.showQuestion(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("question:show", {
         question: result.question,
@@ -117,7 +125,7 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:start-countdown", rawPayload ?? {}, async () => {
       pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
-      const result = await contestService.startCountdown(payload.questionId);
+      const result = await contestService.startCountdown(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("countdown:start", { seconds: result.seconds, endsAt: result.endsAt });
       scheduleCountdownEnd(result.endsAt);
@@ -146,7 +154,9 @@ export const registerAdminSocketHandlers = (
   socket.on("admin:show-team-score", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:show-team-score", rawPayload ?? {}, async () => {
       const payload = teamScoreSchema.parse(rawPayload);
-      const result = await contestService.showTeamScore(payload.examSetId, payload.teamIds);
+      const result = await contestService.showTeamScore(payload.examSetId, payload.teamIds, {
+        activeTeamId: payload.activeTeamId ?? null
+      });
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("team-score:show", { examSetId: result.examSetId, teams: result.teams });
     });
@@ -155,7 +165,7 @@ export const registerAdminSocketHandlers = (
   socket.on("admin:show-leaderboard", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:show-leaderboard", rawPayload ?? {}, async () => {
       const payload = leaderboardSchema.parse(rawPayload ?? {});
-      const result = await contestService.showLeaderboard(payload.teamIds);
+      const result = await contestService.showLeaderboard(payload.teamIds, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen });
       io.emit("leaderboard:show", { rankings: result.rankings });
     });
@@ -167,7 +177,7 @@ export const registerAdminSocketHandlers = (
       const payload = questionSchema.parse(rawPayload);
       clearCountdownEnd();
       await contestService.retakeQuestion(payload.questionId);
-      const result = await contestService.showQuestion(payload.questionId);
+      const result = await contestService.showQuestion(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen, data: { backgroundUrl: result.state.backgroundUrl ?? null } });
       io.emit("question:show", {
         question: result.question,
@@ -198,19 +208,18 @@ export const registerAdminSocketHandlers = (
       if (state.screen !== "reveal") {
         throw new AppError("Can only show LED solution in reveal screen", 400);
       }
-      if (!pendingContestantResults || pendingContestantResults.length === 0) {
-        throw new AppError("No pending contestant results to reveal", 400);
-      }
       io.to("led-screen").emit("led:show-solution", {});
-      pendingContestantResults.forEach((item) => {
-        io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
-          questionId: item.questionId,
-          isCorrect: item.isCorrect,
-          scoreEarned: item.scoreEarned,
-          totalScore: item.totalScore
+      if (pendingContestantResults && pendingContestantResults.length > 0) {
+        pendingContestantResults.forEach((item) => {
+          io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
+            questionId: item.questionId,
+            isCorrect: item.isCorrect,
+            scoreEarned: item.scoreEarned,
+            totalScore: item.totalScore
+          });
         });
-      });
-      pendingContestantResults = null;
+      }
+      pendingContestantResults = null; // ensure B2 won't resend old results
     });
   });
 

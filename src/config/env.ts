@@ -16,7 +16,6 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1).default("dev"),
   JWT_ADMIN_EXPIRES_IN: z.string().min(1).default("12h"),
   JWT_CONTESTANT_EXPIRES_IN: z.string().min(1).default("8h"),
-  DEFAULT_CONTESTANT_PASSWORD: z.string().min(1).default("thisinh123"),
   DB_SYNCHRONIZE: z.enum(["true", "false"]).optional()
 });
 
@@ -38,6 +37,5 @@ export const env = {
   jwtSecret: parsed.JWT_SECRET,
   jwtAdminExpiresIn: parsed.JWT_ADMIN_EXPIRES_IN,
   jwtContestantExpiresIn: parsed.JWT_CONTESTANT_EXPIRES_IN,
-  defaultContestantPassword: parsed.DEFAULT_CONTESTANT_PASSWORD,
   dbSynchronize: parsed.DB_SYNCHRONIZE ? parsed.DB_SYNCHRONIZE === "true" : parsed.NODE_ENV !== "production"
 };
