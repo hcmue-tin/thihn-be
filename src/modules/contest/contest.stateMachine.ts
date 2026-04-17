@@ -4,7 +4,7 @@ import { ContestState } from "./contestState.entity";
 export type ContestScreen = ContestState["screen"];
 
 const validTransitions: Record<ContestScreen, ContestScreen[]> = {
-  idle: ["waiting", "rules", "team_list"],
+  idle: ["waiting", "rules", "team_list", "team_score", "leaderboard"],
   waiting: ["rules", "team_list", "question"],
   rules: ["waiting", "team_list", "question"],
   team_list: ["waiting", "rules", "question"],
@@ -22,6 +22,25 @@ export const assertTransition = (from: ContestScreen, to: ContestScreen): void =
     return;
   }
   if (!canTransition(from, to)) {
-    throw new StateError(`Invalid transition from '${from}' to '${to}'`);
+    const reason =
+      from === "idle"
+        ? "Chưa bắt đầu thi."
+        : from === "waiting"
+          ? "Phiên thi đang ở màn chờ."
+          : from === "rules"
+            ? "Đang hiển thị thể lệ."
+            : from === "team_list"
+              ? "Đang ở màn chọn đội thi."
+              : from === "question"
+                ? "Đang hiển thị câu hỏi."
+                : from === "countdown"
+                  ? "Đang đếm ngược."
+                  : from === "reveal"
+                    ? "Đang hiển thị đáp án."
+                    : "";
+
+    throw new StateError(
+      `Chuyển trạng thái không hợp lệ (${from} -> ${to}).` + (reason ? ` ${reason}` : "")
+    );
   }
 };

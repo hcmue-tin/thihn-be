@@ -13,6 +13,7 @@ export const registerAdminSocketHandlers = (
   scheduleCountdownEnd: (endsAt: number) => void,
   clearCountdownEnd: () => void
 ): void => {
+  const REVEAL_REFRESH_DELAY_MS = 3200;
   const actor = (socket.data.user?.actor as string) || "system_admin";
   let pendingContestantResults: Array<{
     contestantId: number;
@@ -21,7 +22,15 @@ export const registerAdminSocketHandlers = (
     scoreEarned: number;
     totalScore: number;
   }> | null = null;
+  let revealRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearRevealRefreshTimer = () => {
+    if (revealRefreshTimer) {
+      clearTimeout(revealRefreshTimer);
+      revealRefreshTimer = null;
+    }
+  };
   const emitRevealState = async (questionId: number, filterByActiveTeam: boolean): Promise<void> => {
+    clearRevealRefreshTimer();
     const result = await contestService.showAnswer(questionId);
     io.emit("countdown:end", {});
     io.emit("screen:change", { screen: result.state.screen });
@@ -36,8 +45,23 @@ export const registerAdminSocketHandlers = (
       questionId: result.questionId,
       results: await contestService.getAnswerResultsForQuestion(result.questionId, teamFilter)
     });
-    io.to("led-screen").emit("led:hide-solution", {});
+    io.emit("led:hide-solution", {});
     pendingContestantResults = result.contestantResults;
+    revealRefreshTimer = setTimeout(() => {
+      void (async () => {
+        try {
+          const refreshTeamFilter = filterByActiveTeam ? await contestService.getActiveTeamFilter() : null;
+          const refreshed = await contestService.recomputeRevealResults(result.questionId, refreshTeamFilter);
+          pendingContestantResults = refreshed.contestantResults;
+          io.to("led-screen").emit("answer-results:show", {
+            questionId: result.questionId,
+            results: refreshed.answerRows
+          });
+        } catch (error) {
+          logger.warn({ error, questionId: result.questionId }, "Failed to refresh reveal results after grace window");
+        }
+      })();
+    }, REVEAL_REFRESH_DELAY_MS);
   };
 
   const safeHandle = async (
@@ -64,6 +88,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:set-screen", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:set-screen", rawPayload ?? {}, async () => {
+      clearRevealRefreshTimer();
       const payload = setScreenSchema.parse(rawPayload);
       const activeTeamOpt =
         payload.teamIds && payload.teamIds.length > 0 ? { activeTeamId: payload.teamIds[0] ?? null } : undefined;
@@ -108,6 +133,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:show-question", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:show-question", rawPayload ?? {}, async () => {
+      clearRevealRefreshTimer();
       pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
       const result = await contestService.showQuestion(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
@@ -123,6 +149,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:start-countdown", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:start-countdown", rawPayload ?? {}, async () => {
+      clearRevealRefreshTimer();
       pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
       const result = await contestService.startCountdown(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
@@ -173,6 +200,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:retake-question", async (rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:retake-question", rawPayload ?? {}, async () => {
+      clearRevealRefreshTimer();
       pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
       clearCountdownEnd();
@@ -208,7 +236,7 @@ export const registerAdminSocketHandlers = (
       if (state.screen !== "reveal") {
         throw new AppError("Can only show LED solution in reveal screen", 400);
       }
-      io.to("led-screen").emit("led:show-solution", {});
+      io.emit("led:show-solution", {});
       if (pendingContestantResults && pendingContestantResults.length > 0) {
         pendingContestantResults.forEach((item) => {
           io.to(`contestant:${item.contestantId}`).emit("contestant:answer-result", {
@@ -225,6 +253,7 @@ export const registerAdminSocketHandlers = (
 
   socket.on("admin:reset-session", async (_rawPayload, ack?: AckFn) => {
     await safeHandle(ack, "admin:reset-session", {}, async () => {
+      clearRevealRefreshTimer();
       pendingContestantResults = null;
       clearCountdownEnd();
       const state = await contestService.resetSession();

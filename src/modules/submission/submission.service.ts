@@ -15,6 +15,7 @@ export class SubmissionService {
   private contestStateRepo = AppDataSource.getRepository(ContestState);
   private contestantRepo = AppDataSource.getRepository(Contestant);
   private answerRepo = AppDataSource.getRepository(Answer);
+  private readonly revealAutoSubmitGraceMs = 3000;
 
   async submit(input: SubmitInput): Promise<{ questionId: number; timestamp: number }> {
     const state = await this.contestStateRepo.findOne({ where: { id: 1 } });
@@ -22,7 +23,18 @@ export class SubmissionService {
       throw new AppError("Contest state not initialized", 500);
     }
 
-    if (state.screen !== "countdown" || !state.isCountdownActive || !state.countdownEndAt) {
+    const submittedAt = new Date();
+    const submittedAtMs = submittedAt.getTime();
+    const countdownDeadlineMs = state.countdownEndAt ? new Date(state.countdownEndAt).getTime() : null;
+    const revealDeadlineMs =
+      state.screen === "reveal" && state.updatedAt
+        ? new Date(state.updatedAt).getTime() + this.revealAutoSubmitGraceMs
+        : null;
+    const canSubmitDuringCountdown =
+      state.screen === "countdown" && state.isCountdownActive && countdownDeadlineMs != null && submittedAtMs <= countdownDeadlineMs;
+    const canSubmitRightAfterReveal = state.screen === "reveal" && revealDeadlineMs != null && submittedAtMs <= revealDeadlineMs;
+
+    if (!canSubmitDuringCountdown && !canSubmitRightAfterReveal) {
       throw new AppError("Submission is not allowed now", 400);
     }
 
@@ -38,11 +50,6 @@ export class SubmissionService {
       if (contestant.teamId !== state.activeTeamId) {
         throw new AppError("Current round is not for your team", 403);
       }
-    }
-
-    const submittedAt = new Date();
-    if (submittedAt.getTime() > new Date(state.countdownEndAt).getTime()) {
-      throw new AppError("Time is up", 400);
     }
 
     const existing = await this.answerRepo.findOne({

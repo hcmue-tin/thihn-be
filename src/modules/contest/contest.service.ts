@@ -469,6 +469,26 @@ export class ContestService {
     }));
   }
 
+  async recomputeRevealResults(
+    questionId: number,
+    filterTeamIds?: number[] | null
+  ): Promise<{
+    contestantResults: Array<{ contestantId: number; questionId: number; isCorrect: boolean; scoreEarned: number; totalScore: number }>;
+    answerRows: Array<{
+      contestantId: number;
+      contestantName: string;
+      teamName: string;
+      hasSubmitted: boolean;
+      isCorrect: boolean | null;
+      scoreEarned: number;
+      answerSummary: string | null;
+    }>;
+  }> {
+    const scoring = await this.scoringService.scoreAll(questionId);
+    const answerRows = await this.getAnswerResultsForQuestion(questionId, filterTeamIds);
+    return { contestantResults: scoring.contestantResults, answerRows };
+  }
+
   async writeAudit(actor: string, action: string, payload?: Record<string, unknown>): Promise<void> {
     await this.auditLogRepo.save(
       this.auditLogRepo.create({
