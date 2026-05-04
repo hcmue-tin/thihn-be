@@ -41,9 +41,10 @@ export const registerAdminSocketHandlers = (
       stats: result.stats
     });
     const teamFilter = filterByActiveTeam ? await contestService.getActiveTeamFilter() : null;
+    const currentState = await contestService.getCurrentState();
     io.to("led-screen").emit("answer-results:show", {
       questionId: result.questionId,
-      results: await contestService.getAnswerResultsForQuestion(result.questionId, teamFilter)
+      results: await contestService.getAnswerResultsForQuestion(result.questionId, teamFilter, currentState.currentSessionId)
     });
     io.emit("led:hide-solution", {});
     pendingContestantResults = result.contestantResults;
@@ -51,7 +52,12 @@ export const registerAdminSocketHandlers = (
       void (async () => {
         try {
           const refreshTeamFilter = filterByActiveTeam ? await contestService.getActiveTeamFilter() : null;
-          const refreshed = await contestService.recomputeRevealResults(result.questionId, refreshTeamFilter);
+          const refreshState = await contestService.getCurrentState();
+          const refreshed = await contestService.recomputeRevealResults(
+            result.questionId,
+            refreshTeamFilter,
+            refreshState.currentSessionId
+          );
           pendingContestantResults = refreshed.contestantResults;
           io.to("led-screen").emit("answer-results:show", {
             questionId: result.questionId,
@@ -119,7 +125,7 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:set-active-team", rawPayload ?? {}, async () => {
       const payload = setActiveTeamSchema.parse(rawPayload);
       const state = await contestService.setActiveTeam(payload.activeTeamId ?? null);
-      io.emit("contest:sync-state", { fullState: state });
+      io.emit("contest:sync-state", { fullState: state, serverNow: Date.now() });
     });
   });
 
@@ -127,7 +133,7 @@ export const registerAdminSocketHandlers = (
     await safeHandle(ack, "admin:select-exam-set", rawPayload ?? {}, async () => {
       const payload = examSetSchema.parse(rawPayload);
       const state = await contestService.selectExamSet(payload.examSetId);
-      io.emit("contest:sync-state", { fullState: state });
+      io.emit("contest:sync-state", { fullState: state, serverNow: Date.now() });
     });
   });
 
@@ -154,7 +160,7 @@ export const registerAdminSocketHandlers = (
       const payload = questionSchema.parse(rawPayload);
       const result = await contestService.startCountdown(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen });
-      io.emit("countdown:start", { seconds: result.seconds, endsAt: result.endsAt });
+      io.emit("countdown:start", { seconds: result.seconds, endsAt: result.endsAt, serverNow: Date.now() });
       scheduleCountdownEnd(result.endsAt);
     });
   });
@@ -194,7 +200,14 @@ export const registerAdminSocketHandlers = (
       const payload = leaderboardSchema.parse(rawPayload ?? {});
       const result = await contestService.showLeaderboard(payload.teamIds, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen });
-      io.emit("leaderboard:show", { rankings: result.rankings });
+      io.emit("leaderboard:show", { rankings: result.rankings, showAll: payload.showAll === true });
+    });
+  });
+
+  socket.on("admin:leaderboard-page", async (rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:leaderboard-page", rawPayload ?? {}, async () => {
+      const payload = z.object({ direction: z.enum(["prev", "next"]) }).parse(rawPayload ?? {});
+      io.to("led-screen").emit("leaderboard:page", { direction: payload.direction });
     });
   });
 
@@ -204,7 +217,8 @@ export const registerAdminSocketHandlers = (
       pendingContestantResults = null;
       const payload = questionSchema.parse(rawPayload);
       clearCountdownEnd();
-      await contestService.retakeQuestion(payload.questionId);
+      const state = await contestService.getCurrentState();
+      await contestService.retakeQuestion(payload.questionId, state.currentSessionId);
       const result = await contestService.showQuestion(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen, data: { backgroundUrl: result.state.backgroundUrl ?? null } });
       io.emit("question:show", {
@@ -258,7 +272,7 @@ export const registerAdminSocketHandlers = (
       clearCountdownEnd();
       const state = await contestService.resetSession();
       io.emit("countdown:end", {});
-      io.emit("contest:sync-state", { fullState: state });
+      io.emit("contest:sync-state", { fullState: state, serverNow: Date.now() });
       io.emit("screen:change", { screen: state.screen });
     });
   });

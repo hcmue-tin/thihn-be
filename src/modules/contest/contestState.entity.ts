@@ -20,6 +20,9 @@ export class ContestState {
   @Column({ name: "current_question_id", type: "int", nullable: true })
   currentQuestionId!: number | null;
 
+  @Column({ name: "current_session_id", type: "int", default: 1 })
+  currentSessionId!: number;
+
   @Column({ name: "is_countdown_active", type: "boolean", default: false })
   isCountdownActive!: boolean;
 

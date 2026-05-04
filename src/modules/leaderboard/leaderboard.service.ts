@@ -10,7 +10,7 @@ type TeamScoreItem = {
 };
 
 export class LeaderboardService {
-  async getTeamScores(examSetId: number, teamIds?: number[]): Promise<TeamScoreItem[]> {
+  async getTeamScores(examSetId: number, teamIds?: number[], sessionId?: number): Promise<TeamScoreItem[]> {
     let qb = AppDataSource.createQueryBuilder()
       .select("t.id", "teamId")
       .addSelect("t.name", "teamName")
@@ -22,8 +22,8 @@ export class LeaderboardService {
       .leftJoin(
         "answers",
         "a",
-        "a.contestant_id = c.id AND a.exam_set_id = :examSetId",
-        { examSetId }
+        "a.contestant_id = c.id AND a.exam_set_id = :examSetId AND (:sessionId IS NULL OR a.session_id = :sessionId)",
+        { examSetId, sessionId: sessionId ?? null }
       );
 
     if (teamIds && teamIds.length > 0) {
@@ -67,22 +67,35 @@ export class LeaderboardService {
     return [...grouped.values()].sort((a, b) => b.totalScore - a.totalScore);
   }
 
-  async getFinalRankings(teamIds?: number[]): Promise<Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }>> {
+  async getFinalRankings(
+    teamIds?: number[],
+    sessionId?: number
+  ): Promise<Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }>> {
     let qb = AppDataSource.getRepository(Contestant)
       .createQueryBuilder("c")
       .innerJoin("teams", "t", "t.id = c.team_id")
+      .leftJoin(
+        "answers",
+        "a",
+        "a.contestant_id = c.id AND (:sessionId IS NULL OR a.session_id = :sessionId)",
+        { sessionId: sessionId ?? null }
+      )
       .select("c.id", "contestantId")
       .addSelect("c.name", "contestantName")
       .addSelect("c.team_id", "teamId")
       .addSelect("t.name", "teamName")
-      .addSelect("c.total_score", "totalScore");
+      .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore");
 
     if (teamIds && teamIds.length > 0) {
       qb = qb.where("t.id IN (:...teamIds)", { teamIds });
     }
 
     const rows = await qb
-      .orderBy("c.total_score", "DESC")
+      .groupBy("c.id")
+      .addGroupBy("c.name")
+      .addGroupBy("c.team_id")
+      .addGroupBy("t.name")
+      .orderBy("totalScore", "DESC")
       .addOrderBy("c.id", "ASC")
       .getRawMany<{ contestantId: string; contestantName: string; teamId: string; teamName: string; totalScore: string }>();
 

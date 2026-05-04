@@ -78,7 +78,7 @@ const start = async (): Promise<void> => {
     }
 
     const state = await contestService.getCurrentState();
-    socket.emit("contest:sync-state", { fullState: state });
+    socket.emit("contest:sync-state", { fullState: state, serverNow: Date.now() });
     if (state.screen === "rules") {
       socket.emit("screen:change", {
         screen: state.screen,
@@ -102,6 +102,19 @@ const start = async (): Promise<void> => {
         countdownSeconds: question.countdownSeconds,
         shownAt: Date.now()
       });
+      if (role === "contestant") {
+        const contestantId = socket.data.user?.contestantId as number | undefined;
+        if (contestantId) {
+          const existingSubmission = await submissionService.getExistingSubmission(
+            contestantId,
+            state.currentQuestionId,
+            state.currentSessionId
+          );
+          if (existingSubmission) {
+            socket.emit("contestant:answer-received", existingSubmission);
+          }
+        }
+      }
       if (state.screen === "reveal" && clientType === "led") {
         const teamFilter = state.activeTeamId != null ? [state.activeTeamId] : null;
         socket.emit("answer-results:show", {

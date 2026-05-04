@@ -1,5 +1,4 @@
 import { AppDataSource } from "../../config/database";
-import { Contestant } from "../contestant/contestant.entity";
 import { Answer } from "../submission/answer.entity";
 import { FillBlankAnswer } from "../question/fillBlankAnswer.entity";
 import { Option } from "../question/option.entity";
@@ -59,12 +58,12 @@ export class ScoringService {
     return [...new Set(normalized)];
   }
 
-  async scoreAll(questionId: number): Promise<ScoringResult> {
+  async scoreAll(questionId: number, sessionId: number): Promise<ScoringResult> {
     const question = await this.questionRepo.findOne({ where: { id: questionId } });
     if (!question) throw new NotFoundError("Question not found");
 
     const [answers, options, fillBlankAnswers] = await Promise.all([
-      this.answerRepo.find({ where: { questionId } }),
+      this.answerRepo.find({ where: { questionId, sessionId } }),
       this.optionRepo.find({ where: { questionId } }),
       this.fillBlankRepo.find({ where: { questionId } })
     ]);
@@ -145,6 +144,7 @@ export class ScoringService {
         .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
         .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
         .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
+        .andWhere("a.session_id = :sessionId", { sessionId })
         .groupBy("a.contestant_id")
         .getRawMany();
 
@@ -158,11 +158,13 @@ export class ScoringService {
       }
     });
 
-    const contestantTotalRows = await AppDataSource.getRepository(Contestant)
-      .createQueryBuilder("c")
-      .select("c.id", "contestantId")
-      .addSelect("c.total_score", "totalScore")
-      .where("c.id IN (:...contestantIds)", { contestantIds: [...new Set(evaluated.map((e) => e.contestantId))] })
+    const contestantTotalRows = await AppDataSource.getRepository(Answer)
+      .createQueryBuilder("a")
+      .select("a.contestant_id", "contestantId")
+      .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+      .where("a.contestant_id IN (:...contestantIds)", { contestantIds: [...new Set(evaluated.map((e) => e.contestantId))] })
+      .andWhere("a.session_id = :sessionId", { sessionId })
+      .groupBy("a.contestant_id")
       .getRawMany<{ contestantId: number; totalScore: number }>();
 
     const totalMap = new Map<number, number>(contestantTotalRows.map((row) => [Number(row.contestantId), Number(row.totalScore)]));

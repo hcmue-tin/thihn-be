@@ -14,6 +14,7 @@ type UpdateStateInput = Partial<{
   screen: ContestScreen;
   currentExamSetId: number | null;
   currentQuestionId: number | null;
+  currentSessionId: number;
   isCountdownActive: boolean;
   countdownEndAt: Date | null;
   rulesContent: string | null;
@@ -56,6 +57,7 @@ export class ContestService {
           screen: "idle",
           currentExamSetId: null,
           currentQuestionId: null,
+          currentSessionId: 1,
           isCountdownActive: false,
           countdownEndAt: null,
           rulesContent: null,
@@ -75,6 +77,7 @@ export class ContestService {
     if (patch.screen !== undefined) setPayload.screen = patch.screen;
     if (patch.currentExamSetId !== undefined) setPayload.currentExamSetId = patch.currentExamSetId;
     if (patch.currentQuestionId !== undefined) setPayload.currentQuestionId = patch.currentQuestionId;
+    if (patch.currentSessionId !== undefined) setPayload.currentSessionId = patch.currentSessionId;
     if (patch.isCountdownActive !== undefined) setPayload.isCountdownActive = patch.isCountdownActive;
     if (patch.countdownEndAt !== undefined) setPayload.countdownEndAt = patch.countdownEndAt;
     if (patch.rulesContent !== undefined) setPayload.rulesContent = patch.rulesContent;
@@ -188,7 +191,7 @@ export class ContestService {
 
     const options = await this.optionRepo.find({ where: { questionId, isCorrect: true } });
     const fillBlankAnswers = await this.fillBlankRepo.find({ where: { questionId } });
-    const scoring = await this.scoringService.scoreAll(questionId);
+    const scoring = await this.scoringService.scoreAll(questionId, state.currentSessionId);
 
     return {
       state,
@@ -213,7 +216,7 @@ export class ContestService {
       screen: "team_score",
       ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
     });
-    const teams = await this.leaderboardService.getTeamScores(examSetId, teamIds);
+    const teams = await this.leaderboardService.getTeamScores(examSetId, teamIds, state.currentSessionId);
     return { state, examSetId, teams };
   }
 
@@ -227,7 +230,7 @@ export class ContestService {
       screen: "leaderboard",
       ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
     });
-    const rankings = await this.leaderboardService.getFinalRankings(teamIds);
+    const rankings = await this.leaderboardService.getFinalRankings(teamIds, state.currentSessionId);
     return { state, rankings };
   }
 
@@ -245,6 +248,7 @@ export class ContestService {
     return this.updateContestState(current.version, {
       screen: "idle",
       currentQuestionId: null,
+      currentSessionId: current.currentSessionId + 1,
       isCountdownActive: false,
       countdownEndAt: null
     });
@@ -290,7 +294,7 @@ export class ContestService {
     return this.updateContestState(current.version, patch);
   }
 
-  async retakeQuestion(questionId: number): Promise<void> {
+  async retakeQuestion(questionId: number, sessionId: number): Promise<void> {
     const question = await this.getQuestionById(questionId);
 
     const contestantRows = await AppDataSource.createQueryBuilder()
@@ -310,6 +314,7 @@ export class ContestService {
         .from("answers")
         .where("question_id = :questionId", { questionId })
         .andWhere("exam_set_id = :examSetId", { examSetId: question.examSetId })
+        .andWhere("session_id = :sessionId", { sessionId })
         .execute();
 
       if (contestantIds.length === 0) {
@@ -323,6 +328,7 @@ export class ContestService {
         .from("answers", "a")
         .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
         .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
+        .andWhere("a.session_id = :sessionId", { sessionId })
         .groupBy("a.contestant_id")
         .getRawMany<{ contestantId: string; totalScore: string }>();
 
@@ -391,7 +397,8 @@ export class ContestService {
 
   async getAnswerResultsForQuestion(
     questionId: number,
-    filterTeamIds?: number[] | null
+    filterTeamIds?: number[] | null,
+    sessionId?: number
   ): Promise<
     Array<{
       contestantId: number;
@@ -403,6 +410,8 @@ export class ContestService {
       answerSummary: string | null;
     }>
   > {
+    const effectiveSessionId = sessionId ?? (await this.getCurrentState()).currentSessionId;
+
     let qb = AppDataSource.createQueryBuilder()
       .select("c.id", "contestantId")
       .addSelect("c.name", "contestantName")
@@ -416,7 +425,12 @@ export class ContestService {
       .addSelect("a.selected_option_ids", "selectedOptionIds")
       .from("contestants", "c")
       .leftJoin("teams", "t", "t.id = c.team_id")
-      .leftJoin("answers", "a", "a.contestant_id = c.id AND a.question_id = :questionId", { questionId })
+      .leftJoin(
+        "answers",
+        "a",
+        "a.contestant_id = c.id AND a.question_id = :questionId AND a.session_id = :sessionId",
+        { questionId, sessionId: effectiveSessionId }
+      )
       .orderBy("c.name", "ASC");
 
     if (filterTeamIds !== undefined && filterTeamIds !== null && filterTeamIds.length > 0) {
@@ -471,7 +485,8 @@ export class ContestService {
 
   async recomputeRevealResults(
     questionId: number,
-    filterTeamIds?: number[] | null
+    filterTeamIds?: number[] | null,
+    sessionId?: number
   ): Promise<{
     contestantResults: Array<{ contestantId: number; questionId: number; isCorrect: boolean; scoreEarned: number; totalScore: number }>;
     answerRows: Array<{
@@ -484,8 +499,9 @@ export class ContestService {
       answerSummary: string | null;
     }>;
   }> {
-    const scoring = await this.scoringService.scoreAll(questionId);
-    const answerRows = await this.getAnswerResultsForQuestion(questionId, filterTeamIds);
+    const effectiveSessionId = sessionId ?? (await this.getCurrentState()).currentSessionId;
+    const scoring = await this.scoringService.scoreAll(questionId, effectiveSessionId);
+    const answerRows = await this.getAnswerResultsForQuestion(questionId, filterTeamIds, effectiveSessionId);
     return { contestantResults: scoring.contestantResults, answerRows };
   }
 

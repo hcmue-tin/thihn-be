@@ -186,6 +186,7 @@ export class ContestantService {
 
   async getHistoryByContestant(id: number): Promise<
     Array<{
+      sessionId: number;
       examSetId: number;
       examSetName: string;
       totalScore: number;
@@ -208,6 +209,7 @@ export class ContestantService {
       .innerJoin("exam_sets", "es", "es.id = a.exam_set_id")
       .innerJoin("questions", "q", "q.id = a.question_id")
       .select("a.exam_set_id", "examSetId")
+      .addSelect("a.session_id", "sessionId")
       .addSelect("es.name", "examSetName")
       .addSelect("a.question_id", "questionId")
       .addSelect("q.content", "questionContent")
@@ -215,9 +217,11 @@ export class ContestantService {
       .addSelect("COALESCE(a.score_earned, 0)", "scoreEarned")
       .addSelect("a.submitted_at", "submittedAt")
       .where("a.contestant_id = :contestantId", { contestantId: id })
-      .orderBy("a.exam_set_id", "DESC")
+      .orderBy("a.session_id", "DESC")
+      .addOrderBy("a.exam_set_id", "DESC")
       .addOrderBy("a.submitted_at", "DESC")
       .getRawMany<{
+        sessionId: string;
         examSetId: string;
         examSetName: string;
         questionId: string;
@@ -227,7 +231,8 @@ export class ContestantService {
         submittedAt: string;
       }>();
 
-    const grouped = new Map<number, {
+    const grouped = new Map<string, {
+      sessionId: number;
       examSetId: number;
       examSetName: string;
       totalScore: number;
@@ -243,9 +248,12 @@ export class ContestantService {
     }>();
 
     rows.forEach((row) => {
+      const sessionId = Number(row.sessionId);
       const examSetId = Number(row.examSetId);
-      if (!grouped.has(examSetId)) {
-        grouped.set(examSetId, {
+      const key = `${sessionId}:${examSetId}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          sessionId,
           examSetId,
           examSetName: row.examSetName,
           totalScore: 0,
@@ -254,7 +262,7 @@ export class ContestantService {
           questions: []
         });
       }
-      const bucket = grouped.get(examSetId)!;
+      const bucket = grouped.get(key)!;
       const scoreEarned = Number(row.scoreEarned) || 0;
       const isCorrect = row.isCorrect === null ? null : Boolean(row.isCorrect);
       bucket.totalScore += scoreEarned;

@@ -4,7 +4,7 @@ import { Question } from "../question/question.entity";
 import { ExamSet } from "../exam/examSet.entity";
 
 @Entity("answers")
-@Unique(["contestantId", "questionId"])
+@Unique(["contestantId", "questionId", "sessionId"])
 export class Answer {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -35,6 +35,10 @@ export class Answer {
   @Index()
   @Column({ name: "exam_set_id", type: "int" })
   examSetId!: number;
+
+  @Index()
+  @Column({ name: "session_id", type: "int", default: 1 })
+  sessionId!: number;
 
   @ManyToOne(() => Contestant, (contestant) => contestant.answers, { onDelete: "CASCADE" })
   @JoinColumn({ name: "contestant_id" })

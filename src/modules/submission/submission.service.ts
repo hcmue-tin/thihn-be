@@ -17,6 +17,27 @@ export class SubmissionService {
   private answerRepo = AppDataSource.getRepository(Answer);
   private readonly revealAutoSubmitGraceMs = 3000;
 
+  async getExistingSubmission(
+    contestantId: number,
+    questionId: number,
+    sessionId: number
+  ): Promise<{ questionId: number; timestamp: number; selectedOptionIds: number[] | null; fillText: string | null } | null> {
+    const answer = await this.answerRepo.findOne({
+      where: {
+        contestantId,
+        questionId,
+        sessionId
+      }
+    });
+    if (!answer) return null;
+    return {
+      questionId: answer.questionId,
+      timestamp: answer.submittedAt.getTime(),
+      selectedOptionIds: answer.selectedOptionIds,
+      fillText: answer.fillText
+    };
+  }
+
   async submit(input: SubmitInput): Promise<{ questionId: number; timestamp: number }> {
     const state = await this.contestStateRepo.findOne({ where: { id: 1 } });
     if (!state) {
@@ -55,7 +76,8 @@ export class SubmissionService {
     const existing = await this.answerRepo.findOne({
       where: {
         contestantId: input.contestantId,
-        questionId: input.questionId
+        questionId: input.questionId,
+        sessionId: state.currentSessionId
       }
     });
 
@@ -64,6 +86,7 @@ export class SubmissionService {
       existing.fillText = input.fillText ?? null;
       existing.submittedAt = submittedAt;
       existing.examSetId = state.currentExamSetId as number;
+      existing.sessionId = state.currentSessionId;
       existing.isCorrect = null;
       existing.scoreEarned = null;
       await this.answerRepo.save(existing);
@@ -76,7 +99,8 @@ export class SubmissionService {
         isCorrect: null,
         scoreEarned: null,
         submittedAt,
-        examSetId: state.currentExamSetId as number
+        examSetId: state.currentExamSetId as number,
+        sessionId: state.currentSessionId
       });
     }
 

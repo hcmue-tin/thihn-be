@@ -33,7 +33,8 @@ export const teamScoreSchema = z.object({
 });
 export const leaderboardSchema = z.object({
   teamIds: z.array(z.number().int().positive()).optional(),
-  activeTeamId: optionalActiveTeamIdSchema
+  activeTeamId: optionalActiveTeamIdSchema,
+  showAll: z.boolean().optional()
 });
 
 export type AckResponse = { success: boolean; message?: string };
