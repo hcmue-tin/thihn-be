@@ -13,7 +13,7 @@ const migrations: Array<{ name: string; up: (db: typeof AppDataSource) => Promis
       await qr.connect();
       try {
         const dbName = db.options.database as string;
-        const rows = await qr.query<ColumnRow[]>(
+        const rows: ColumnRow[] = await qr.query(
           `SELECT COLUMN_NAME FROM information_schema.COLUMNS
            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'contest_state' AND COLUMN_NAME = 'led_waiting_background_url'`,
           [dbName]
