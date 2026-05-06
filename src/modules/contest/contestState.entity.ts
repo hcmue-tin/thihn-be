@@ -38,6 +38,9 @@ export class ContestState {
   @Column({ name: "led_background_url", type: "varchar", length: 500, nullable: true })
   ledBackgroundUrl!: string | null;
 
+  @Column({ name: "led_waiting_background_url", type: "varchar", length: 500, nullable: true })
+  ledWaitingBackgroundUrl!: string | null;
+
   @Column({ name: "contestant_background_url", type: "varchar", length: 500, nullable: true })
   contestantBackgroundUrl!: string | null;
 

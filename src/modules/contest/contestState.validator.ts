@@ -7,6 +7,7 @@ export const updateRulesSchema = {
     rulesContent: z.string(),
     backgroundUrl: urlOrEmpty.nullable().optional(),
     ledBackgroundUrl: urlOrEmpty.nullable().optional(),
+    ledWaitingBackgroundUrl: urlOrEmpty.nullable().optional(),
     contestantBackgroundUrl: urlOrEmpty.nullable().optional()
   })
 };

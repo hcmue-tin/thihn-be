@@ -102,6 +102,7 @@ export const registerAdminSocketHandlers = (
       const bgPayload = {
         backgroundUrl: state.backgroundUrl ?? null,
         ledBackgroundUrl: state.ledBackgroundUrl ?? state.backgroundUrl ?? null,
+        ledWaitingBackgroundUrl: state.ledWaitingBackgroundUrl ?? null,
         contestantBackgroundUrl: state.contestantBackgroundUrl ?? state.backgroundUrl ?? null
       };
       if (payload.screen === "rules") {

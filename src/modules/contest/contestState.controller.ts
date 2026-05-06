@@ -13,6 +13,7 @@ export class ContestStateController {
         rulesContent: state.rulesContent ?? null,
         backgroundUrl: state.backgroundUrl ?? null,
         ledBackgroundUrl: state.ledBackgroundUrl ?? state.backgroundUrl ?? null,
+        ledWaitingBackgroundUrl: state.ledWaitingBackgroundUrl ?? null,
         contestantBackgroundUrl: state.contestantBackgroundUrl ?? state.backgroundUrl ?? null
       }
     });
@@ -24,6 +25,7 @@ export class ContestStateController {
       rulesContent: body.rulesContent,
       backgroundUrl: body.backgroundUrl === "" ? null : body.backgroundUrl,
       ledBackgroundUrl: body.ledBackgroundUrl === "" ? null : body.ledBackgroundUrl,
+      ledWaitingBackgroundUrl: body.ledWaitingBackgroundUrl === "" ? null : body.ledWaitingBackgroundUrl,
       contestantBackgroundUrl: body.contestantBackgroundUrl === "" ? null : body.contestantBackgroundUrl
     });
     res.json({
@@ -32,6 +34,7 @@ export class ContestStateController {
         rulesContent: state.rulesContent,
         backgroundUrl: state.backgroundUrl ?? null,
         ledBackgroundUrl: state.ledBackgroundUrl ?? state.backgroundUrl ?? null,
+        ledWaitingBackgroundUrl: state.ledWaitingBackgroundUrl ?? null,
         contestantBackgroundUrl: state.contestantBackgroundUrl ?? state.backgroundUrl ?? null
       }
     });

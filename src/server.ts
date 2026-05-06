@@ -86,6 +86,7 @@ const start = async (): Promise<void> => {
           rulesContent: state.rulesContent ?? null,
           backgroundUrl: state.backgroundUrl ?? null,
           ledBackgroundUrl: state.ledBackgroundUrl ?? state.backgroundUrl ?? null,
+          ledWaitingBackgroundUrl: state.ledWaitingBackgroundUrl ?? null,
           contestantBackgroundUrl: state.contestantBackgroundUrl ?? state.backgroundUrl ?? null
         }
       });

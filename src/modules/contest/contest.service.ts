@@ -20,6 +20,7 @@ type UpdateStateInput = Partial<{
   rulesContent: string | null;
   backgroundUrl: string | null;
   ledBackgroundUrl: string | null;
+  ledWaitingBackgroundUrl: string | null;
   contestantBackgroundUrl: string | null;
   activeTeamId: number | null;
 }>;
@@ -63,6 +64,7 @@ export class ContestService {
           rulesContent: null,
           backgroundUrl: null,
           ledBackgroundUrl: null,
+          ledWaitingBackgroundUrl: null,
           contestantBackgroundUrl: null,
           activeTeamId: null,
           version: 0
@@ -83,6 +85,7 @@ export class ContestService {
     if (patch.rulesContent !== undefined) setPayload.rulesContent = patch.rulesContent;
     if (patch.backgroundUrl !== undefined) setPayload.backgroundUrl = patch.backgroundUrl;
     if (patch.ledBackgroundUrl !== undefined) setPayload.ledBackgroundUrl = patch.ledBackgroundUrl;
+    if (patch.ledWaitingBackgroundUrl !== undefined) setPayload.ledWaitingBackgroundUrl = patch.ledWaitingBackgroundUrl;
     if (patch.contestantBackgroundUrl !== undefined) setPayload.contestantBackgroundUrl = patch.contestantBackgroundUrl;
     if (patch.activeTeamId !== undefined) setPayload.activeTeamId = patch.activeTeamId;
 
@@ -275,6 +278,7 @@ export class ContestService {
     rulesContent: string;
     backgroundUrl?: string | null;
     ledBackgroundUrl?: string | null;
+    ledWaitingBackgroundUrl?: string | null;
     contestantBackgroundUrl?: string | null;
   }): Promise<ContestState> {
     await this.ensureContestStateExists();
@@ -282,6 +286,9 @@ export class ContestService {
     const patch: UpdateStateInput = { rulesContent: input.rulesContent };
     if (input.ledBackgroundUrl !== undefined) {
       patch.ledBackgroundUrl = input.ledBackgroundUrl;
+    }
+    if (input.ledWaitingBackgroundUrl !== undefined) {
+      patch.ledWaitingBackgroundUrl = input.ledWaitingBackgroundUrl;
     }
     if (input.contestantBackgroundUrl !== undefined) {
       patch.contestantBackgroundUrl = input.contestantBackgroundUrl;
