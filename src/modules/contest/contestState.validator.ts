@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const urlOrEmpty = z.union([z.string().trim().url(), z.literal("")]);
+const urlOrEmpty = z.union([z.string().trim().url(), z.string().trim().startsWith("/"), z.literal("")]);
 
 export const updateRulesSchema = {
   body: z.object({
