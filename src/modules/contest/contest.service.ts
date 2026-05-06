@@ -36,11 +36,7 @@ export class ContestService {
   private leaderboardService = new LeaderboardService();
 
   async getCurrentState(): Promise<ContestState> {
-    const state = await this.contestStateRepo.findOne({ where: { id: 1 } });
-    if (!state) {
-      throw new NotFoundError("Contest state not initialized");
-    }
-    return state;
+    return this.ensureContestStateExists();
   }
 
   private async getQuestionById(questionId: number): Promise<Question> {
