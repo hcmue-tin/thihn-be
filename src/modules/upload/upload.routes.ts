@@ -52,10 +52,9 @@ uploadRouter.post("/upload", uploader.single("file"), (req, res) => {
     throw new ValidationError("Thiếu tệp tải lên");
   }
 
-  const host = `${req.protocol}://${req.get("host")}`;
   const normalizedPath = file.path.replace(/\\/g, "/");
   const relativePath = normalizedPath.includes("/uploads/") ? normalizedPath.split("/uploads/")[1] : path.basename(normalizedPath);
-  const fileUrl = `${host}/uploads/${relativePath}`;
+  const fileUrl = `/uploads/${relativePath}`;
   const kind = file.mimetype.startsWith("image/") ? "image" : "audio";
   if (kind === "audio" && !file.mimetype.startsWith("audio/")) {
     res.setHeader("X-Upload-Note", "filename-extension-audio");
