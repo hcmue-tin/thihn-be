@@ -53,9 +53,14 @@ export class SubmissionService {
         : null;
     const canSubmitDuringCountdown =
       state.screen === "countdown" && state.isCountdownActive && countdownDeadlineMs != null && submittedAtMs <= countdownDeadlineMs;
+    const canSubmitRightAfterCountdown =
+      state.screen === "countdown" &&
+      countdownDeadlineMs != null &&
+      submittedAtMs > countdownDeadlineMs &&
+      submittedAtMs <= countdownDeadlineMs + this.revealAutoSubmitGraceMs;
     const canSubmitRightAfterReveal = state.screen === "reveal" && revealDeadlineMs != null && submittedAtMs <= revealDeadlineMs;
 
-    if (!canSubmitDuringCountdown && !canSubmitRightAfterReveal) {
+    if (!canSubmitDuringCountdown && !canSubmitRightAfterCountdown && !canSubmitRightAfterReveal) {
       throw new AppError("Submission is not allowed now", 400);
     }
 
