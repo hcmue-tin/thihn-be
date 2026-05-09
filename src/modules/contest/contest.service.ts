@@ -202,6 +202,30 @@ export class ContestService {
     };
   }
 
+  async getRevealPayload(questionId: number, sessionId?: number): Promise<{
+    questionId: number;
+    correctOptionIds: number[];
+    fillBlankAnswers: string[];
+    stats: Record<string, number>;
+    contestantResults: Array<{ contestantId: number; questionId: number; isCorrect: boolean; scoreEarned: number; totalScore: number }>;
+  }> {
+    const current = await this.getCurrentState();
+    const effectiveSessionId = sessionId ?? current.currentSessionId;
+    await this.getQuestionById(questionId);
+
+    const options = await this.optionRepo.find({ where: { questionId, isCorrect: true } });
+    const fillBlankAnswers = await this.fillBlankRepo.find({ where: { questionId } });
+    const scoring = await this.scoringService.scoreAll(questionId, effectiveSessionId);
+
+    return {
+      questionId,
+      correctOptionIds: options.map((o) => o.id),
+      fillBlankAnswers: fillBlankAnswers.map((f) => f.acceptedAnswer),
+      stats: scoring.stats,
+      contestantResults: scoring.contestantResults
+    };
+  }
+
   async showTeamScore(
     examSetId: number,
     teamIds?: number[],

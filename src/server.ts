@@ -118,9 +118,25 @@ const start = async (): Promise<void> => {
       }
       if (state.screen === "reveal" && clientType === "led") {
         const teamFilter = state.activeTeamId != null ? [state.activeTeamId] : null;
+        const reveal = await contestService.getRevealPayload(state.currentQuestionId, state.currentSessionId);
+        socket.emit("answer:reveal", {
+          questionId: reveal.questionId,
+          correctOptionIds: reveal.correctOptionIds,
+          fillBlankAnswers: reveal.fillBlankAnswers,
+          stats: reveal.stats
+        });
         socket.emit("answer-results:show", {
           questionId: state.currentQuestionId,
-          results: await contestService.getAnswerResultsForQuestion(state.currentQuestionId, teamFilter)
+          results: await contestService.getAnswerResultsForQuestion(state.currentQuestionId, teamFilter, state.currentSessionId)
+        });
+      }
+      if (state.screen === "reveal" && clientType !== "led") {
+        const reveal = await contestService.getRevealPayload(state.currentQuestionId, state.currentSessionId);
+        socket.emit("answer:reveal", {
+          questionId: reveal.questionId,
+          correctOptionIds: reveal.correctOptionIds,
+          fillBlankAnswers: reveal.fillBlankAnswers,
+          stats: reveal.stats
         });
       }
     }
