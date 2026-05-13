@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { AppDataSource } from "../../config/database";
 import { ConflictError, NotFoundError } from "../../shared/errors/AppError";
 import { Contestant } from "./contestant.entity";
