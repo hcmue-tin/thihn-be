@@ -297,7 +297,7 @@ export class ContestService {
     await this.contestSessionRepo.save(
       this.contestSessionRepo.create({
         id: newSessionId,
-        teamId: null
+        teamId: current.activeTeamId
       })
     );
 
