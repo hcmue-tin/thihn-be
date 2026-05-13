@@ -280,6 +280,60 @@ export class ContestantService {
     return Array.from(grouped.values());
   }
 
+  async exportAll(format: "csv" | "excel"): Promise<string | Buffer> {
+    const rows = await this.contestantRepo
+      .createQueryBuilder("c")
+      .leftJoin("teams", "t", "t.id = c.team_id")
+      .select("c.id", "contestantId")
+      .addSelect("c.name", "contestantName")
+      .addSelect("c.code", "contestantCode")
+      .addSelect("c.unit", "unit")
+      .addSelect("t.name", "teamName")
+      .addSelect("c.total_score", "totalScore")
+      .orderBy("c.total_score", "DESC")
+      .addOrderBy("c.id", "ASC")
+      .getRawMany<{ contestantId: string; contestantName: string; contestantCode: string; unit: string | null; teamName: string | null; totalScore: number }>();
+
+    if (format === "csv") {
+      let csv = "\uFEFF"; // BOM for UTF-8 Excel support
+      csv += "STT,Mã Thí Sinh,Tên Thí Sinh,Đơn Vị,Đội,Tổng Điểm\n";
+      rows.forEach((r, index) => {
+        const teamNameStr = r.teamName ? r.teamName.replace(/"/g, '""') : "Chưa có đội";
+        const unitStr = r.unit ? r.unit.replace(/"/g, '""') : "";
+        csv += `${index + 1},${r.contestantCode},"${r.contestantName.replace(/"/g, '""')}","${unitStr}","${teamNameStr}",${r.totalScore}\n`;
+      });
+      return csv;
+    } else {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Điểm Thí Sinh");
+
+      sheet.columns = [
+        { header: "STT", key: "stt", width: 5 },
+        { header: "Mã Thí Sinh", key: "code", width: 15 },
+        { header: "Tên Thí Sinh", key: "name", width: 30 },
+        { header: "Đơn Vị", key: "unit", width: 25 },
+        { header: "Đội", key: "team", width: 25 },
+        { header: "Tổng Điểm", key: "score", width: 15 }
+      ];
+
+      sheet.getRow(1).font = { bold: true };
+      sheet.getRow(1).alignment = { horizontal: "center" };
+
+      rows.forEach((r, index) => {
+        sheet.addRow({
+          stt: index + 1,
+          code: r.contestantCode,
+          name: r.contestantName,
+          unit: r.unit || "",
+          team: r.teamName || "Chưa có đội",
+          score: Number(r.totalScore)
+        });
+      });
+
+      return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
+    }
+  }
+
   private async ensureTeamExists(teamId: number): Promise<void> {
     const team = await this.teamRepo.findOne({ where: { id: teamId } });
     if (!team) {

@@ -21,6 +21,7 @@ const excelUpload = multer({
 
 contestantRouter.use(authenticate, requireAdmin);
 contestantRouter.get("/", validate(contestantQuerySchema), asyncHandler(contestantController.list.bind(contestantController)));
+contestantRouter.get("/export", asyncHandler(contestantController.export.bind(contestantController)));
 contestantRouter.post("/import-excel", excelUpload.single("file"), asyncHandler(contestantController.importExcel.bind(contestantController)));
 contestantRouter.put("/bulk-team", validate(bulkAssignTeamSchema), asyncHandler(contestantController.bulkTeam.bind(contestantController)));
 contestantRouter.post("/", validate(createContestantSchema), asyncHandler(contestantController.create.bind(contestantController)));

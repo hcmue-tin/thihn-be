@@ -57,6 +57,21 @@ export class ContestantController {
     const data = await contestantService.importFromExcelBuffer(file.buffer);
     res.json({ success: true, data });
   }
+
+  async export(req: Request, res: Response): Promise<void> {
+    const format = req.query.format === "excel" ? "excel" : "csv";
+    const data = await contestantService.exportAll(format);
+
+    if (format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="diem-thi-sinh.csv"`);
+      res.send(data);
+    } else {
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="diem-thi-sinh.xlsx"`);
+      res.send(data);
+    }
+  }
 }
 
 export const contestantController = new ContestantController();
