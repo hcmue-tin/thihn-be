@@ -9,6 +9,7 @@ import { Option } from "../modules/question/option.entity";
 import { FillBlankAnswer } from "../modules/question/fillBlankAnswer.entity";
 import { Answer } from "../modules/submission/answer.entity";
 import { ContestState } from "../modules/contest/contestState.entity";
+import { ContestSession } from "../modules/contest/contestSession.entity";
 import { AuditLog } from "../modules/audit/auditLog.entity";
 
 export const AppDataSource = new DataSource({
@@ -18,7 +19,7 @@ export const AppDataSource = new DataSource({
   username: env.dbUsername,
   password: env.dbPassword,
   database: env.dbName,
-  entities: [Team, Contestant, ExamSet, Question, Option, FillBlankAnswer, Answer, ContestState, AuditLog],
+  entities: [Team, Contestant, ExamSet, Question, Option, FillBlankAnswer, ContestSession, Answer, ContestState, AuditLog],
   synchronize: env.dbSynchronize,
   logging: false
 });

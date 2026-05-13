@@ -2,6 +2,7 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, U
 import { Contestant } from "../contestant/contestant.entity";
 import { Question } from "../question/question.entity";
 import { ExamSet } from "../exam/examSet.entity";
+import { ContestSession } from "../contest/contestSession.entity";
 
 @Entity("answers")
 @Unique(["contestantId", "questionId", "sessionId"])
@@ -51,4 +52,8 @@ export class Answer {
   @ManyToOne(() => ExamSet, { onDelete: "CASCADE" })
   @JoinColumn({ name: "exam_set_id" })
   examSet!: ExamSet;
+
+  @ManyToOne(() => ContestSession, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "session_id" })
+  session!: ContestSession;
 }

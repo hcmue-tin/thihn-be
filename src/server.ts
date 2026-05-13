@@ -10,6 +10,7 @@ import { ContestService } from "./modules/contest/contest.service";
 import { registerAdminSocketHandlers } from "./modules/contest/admin.socket";
 import { registerContestantSocketHandlers } from "./modules/contest/contestant.socket";
 import { SubmissionService } from "./modules/submission/submission.service";
+import { ContestSession } from "./modules/contest/contestSession.entity";
 
 const start = async (): Promise<void> => {
   await AppDataSource.initialize();
@@ -40,6 +41,30 @@ const start = async (): Promise<void> => {
       }
     }, delay);
   };
+
+  // --- MIGRATION SCRIPT ---
+  // Ensure historical sessions from `answers` table are migrated into `contest_sessions`
+  const historicalSessions = await AppDataSource.query(`
+    SELECT a.session_id as sessionId, c.team_id as teamId
+    FROM answers a
+    INNER JOIN contestants c ON c.id = a.contestant_id
+    GROUP BY a.session_id, c.team_id
+  `);
+  
+  const contestSessionRepo = AppDataSource.getRepository(ContestSession);
+  for (const hs of historicalSessions) {
+    const exists = await contestSessionRepo.findOne({ where: { id: hs.sessionId } });
+    if (!exists) {
+      await contestSessionRepo.save(
+        contestSessionRepo.create({
+          id: hs.sessionId,
+          teamId: hs.teamId
+        })
+      );
+      logger.info(`Migrated historical session ${hs.sessionId} to contest_sessions table.`);
+    }
+  }
+  // ------------------------
 
   if (env.autoResetContestOnBoot) {
     await contestService.resetSession();

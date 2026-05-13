@@ -7,6 +7,7 @@ import { Question } from "../question/question.entity";
 import { NotFoundError, StateConflictError } from "../../shared/errors/AppError";
 import { assertTransition, ContestScreen } from "./contest.stateMachine";
 import { ContestState } from "./contestState.entity";
+import { ContestSession } from "./contestSession.entity";
 import { ScoringService } from "../scoring/scoring.service";
 import { LeaderboardService } from "../leaderboard/leaderboard.service";
 
@@ -27,6 +28,7 @@ type UpdateStateInput = Partial<{
 
 export class ContestService {
   private contestStateRepo = AppDataSource.getRepository(ContestState);
+  private contestSessionRepo = AppDataSource.getRepository(ContestSession);
   private examSetRepo = AppDataSource.getRepository(ExamSet);
   private questionRepo = AppDataSource.getRepository(Question);
   private optionRepo = AppDataSource.getRepository(Option);
@@ -67,6 +69,17 @@ export class ContestService {
         })
       );
     }
+
+    const session = await this.contestSessionRepo.findOne({ where: { id: state.currentSessionId } });
+    if (!session) {
+      await this.contestSessionRepo.save(
+        this.contestSessionRepo.create({
+          id: state.currentSessionId,
+          teamId: state.activeTeamId
+        })
+      );
+    }
+
     return state;
   }
 
@@ -279,10 +292,19 @@ export class ContestService {
   async resetSession(): Promise<ContestState> {
     await this.ensureContestStateExists();
     const current = await this.getCurrentState();
+    const newSessionId = current.currentSessionId + 1;
+    
+    await this.contestSessionRepo.save(
+      this.contestSessionRepo.create({
+        id: newSessionId,
+        teamId: null
+      })
+    );
+
     return this.updateContestState(current.version, {
       screen: "idle",
       currentQuestionId: null,
-      currentSessionId: current.currentSessionId + 1,
+      currentSessionId: newSessionId,
       isCountdownActive: false,
       countdownEndAt: null
     });
@@ -291,6 +313,9 @@ export class ContestService {
   async setActiveTeam(activeTeamId: number | null): Promise<ContestState> {
     await this.ensureContestStateExists();
     const current = await this.getCurrentState();
+    
+    await this.contestSessionRepo.update(current.currentSessionId, { teamId: activeTeamId });
+
     return this.updateContestState(current.version, { activeTeamId });
   }
 
