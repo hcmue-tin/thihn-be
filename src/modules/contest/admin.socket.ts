@@ -4,7 +4,7 @@ import { AppError } from "../../shared/errors/AppError";
 import { logger } from "../../shared/utils/logger";
 import { ContestService } from "./contest.service";
 import { ContestScreen } from "./contest.stateMachine";
-import { AckFn, examSetSchema, leaderboardSchema, questionSchema, setActiveTeamSchema, setScreenSchema, teamScoreSchema } from "./contest.contracts";
+import { AckFn, examCodeSchema, examSetSchema, leaderboardSchema, questionSchema, setActiveTeamSchema, setScreenSchema, teamScoreSchema } from "./contest.contracts";
 
 export const registerAdminSocketHandlers = (
   io: Server,
@@ -135,6 +135,14 @@ export const registerAdminSocketHandlers = (
       const payload = examSetSchema.parse(rawPayload);
       const state = await contestService.selectExamSet(payload.examSetId);
       io.emit("contest:sync-state", { fullState: state, serverNow: Date.now() });
+    });
+  });
+
+  socket.on("admin:show-exam-code", async (rawPayload, ack?: AckFn) => {
+    await safeHandle(ack, "admin:show-exam-code", rawPayload ?? {}, async () => {
+      const payload = examCodeSchema.parse(rawPayload);
+      const examSet = await contestService.getExamSetDisplay(payload.examSetId);
+      io.to("led-screen").emit("exam-code:show", { ...examSet, shownAt: Date.now() });
     });
   });
 

@@ -118,6 +118,17 @@ export class ContestService {
     return this.updateContestState(current.version, { currentExamSetId: examSetId });
   }
 
+  async getExamSetDisplay(examSetId: number): Promise<{ id: number; name: string; orderNum: number; code: string }> {
+    const examSet = await this.examSetRepo.findOne({ where: { id: examSetId } });
+    if (!examSet) throw new NotFoundError("Exam set not found");
+    return {
+      id: examSet.id,
+      name: examSet.name,
+      orderNum: examSet.orderNum,
+      code: String(examSet.orderNum).padStart(2, "0")
+    };
+  }
+
   async showQuestion(
     questionId: number,
     opts?: { activeTeamId?: number | null }
