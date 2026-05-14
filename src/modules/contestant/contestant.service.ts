@@ -12,10 +12,21 @@ export class ContestantService {
   private teamRepo = AppDataSource.getRepository(Team);
 
   async list(teamId?: number): Promise<Contestant[]> {
-    if (teamId) {
-      return this.contestantRepo.find({ where: { teamId } });
-    }
-    return this.contestantRepo.find();
+    const contestants = teamId
+      ? await this.contestantRepo.find({ where: { teamId } })
+      : await this.contestantRepo.find();
+    const totalMap = await this.getOfficialTotalMap(contestants.map((contestant) => contestant.id));
+    contestants.forEach((contestant) => {
+      contestant.totalScore = totalMap.get(contestant.id) ?? 0;
+    });
+    return contestants;
+  }
+
+  async getOfficialScoreByContestant(id: number): Promise<{ contestantId: number; totalScore: number }> {
+    const contestant = await this.contestantRepo.findOne({ where: { id } });
+    if (!contestant) throw new NotFoundError("Contestant not found");
+    const totalMap = await this.getOfficialTotalMap([id]);
+    return { contestantId: id, totalScore: totalMap.get(id) ?? 0 };
   }
 
   async create(input: {
@@ -285,13 +296,19 @@ export class ContestantService {
     const rows = await this.contestantRepo
       .createQueryBuilder("c")
       .leftJoin("teams", "t", "t.id = c.team_id")
+      .leftJoin("answers", "a", "a.contestant_id = c.id")
       .select("c.id", "contestantId")
       .addSelect("c.name", "contestantName")
       .addSelect("c.code", "contestantCode")
       .addSelect("c.unit", "unit")
       .addSelect("t.name", "teamName")
-      .addSelect("c.total_score", "totalScore")
-      .orderBy("c.total_score", "DESC")
+      .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+      .groupBy("c.id")
+      .addGroupBy("c.name")
+      .addGroupBy("c.code")
+      .addGroupBy("c.unit")
+      .addGroupBy("t.name")
+      .orderBy("totalScore", "DESC")
       .addOrderBy("c.id", "ASC")
       .getRawMany<{ contestantId: string; contestantName: string; contestantCode: string; unit: string | null; teamName: string | null; totalScore: number }>();
 
@@ -340,5 +357,20 @@ export class ContestantService {
     if (!team) {
       throw new NotFoundError("Team not found");
     }
+  }
+
+  private async getOfficialTotalMap(contestantIds: number[]): Promise<Map<number, number>> {
+    const uniqueContestantIds = [...new Set(contestantIds)].filter(Number.isFinite);
+    if (uniqueContestantIds.length === 0) return new Map();
+
+    const rows = await AppDataSource.getRepository(Answer)
+      .createQueryBuilder("a")
+      .select("a.contestant_id", "contestantId")
+      .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+      .where("a.contestant_id IN (:...contestantIds)", { contestantIds: uniqueContestantIds })
+      .groupBy("a.contestant_id")
+      .getRawMany<{ contestantId: string; totalScore: string }>();
+
+    return new Map(rows.map((row) => [Number(row.contestantId), Number(row.totalScore)]));
   }
 }

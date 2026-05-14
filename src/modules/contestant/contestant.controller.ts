@@ -18,6 +18,15 @@ export class ContestantController {
     res.json({ success: true, data });
   }
 
+  async meScore(req: Request, res: Response): Promise<void> {
+    const contestantId = req.user?.contestantId;
+    if (!contestantId) {
+      throw new ValidationError("Missing contestant identity");
+    }
+    const data = await contestantService.getOfficialScoreByContestant(contestantId);
+    res.json({ success: true, data });
+  }
+
   async create(req: Request, res: Response): Promise<void> {
     const input: CreateContestantDto = req.validated?.body as CreateContestantDto;
     const data = await contestantService.create(input);

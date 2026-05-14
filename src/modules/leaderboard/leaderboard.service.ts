@@ -13,7 +13,7 @@ type TeamScoreItem = {
 };
 
 export class LeaderboardService {
-  async getTeamScores(examSetId: number, teamIds?: number[], sessionId?: number): Promise<TeamScoreItem[]> {
+  async getTeamScores(examSetId: number, teamIds?: number[]): Promise<TeamScoreItem[]> {
     let qb = AppDataSource.createQueryBuilder()
       .select("t.id", "teamId")
       .addSelect("t.name", "teamName")
@@ -25,8 +25,8 @@ export class LeaderboardService {
       .leftJoin(
         "answers",
         "a",
-        "a.contestant_id = c.id AND a.exam_set_id = :examSetId AND (:sessionId IS NULL OR a.session_id = :sessionId)",
-        { examSetId, sessionId: sessionId ?? null }
+        "a.contestant_id = c.id AND a.exam_set_id = :examSetId",
+        { examSetId }
       );
 
     if (teamIds && teamIds.length > 0) {
@@ -71,8 +71,7 @@ export class LeaderboardService {
   }
 
   async getFinalRankings(
-    teamIds?: number[],
-    sessionId?: number
+    teamIds?: number[]
   ): Promise<Array<{ rank: number; contestantId: number; name: string; teamId: number; team: string; totalScore: number }>> {
     let qb = AppDataSource.getRepository(Contestant)
       .createQueryBuilder("c")
@@ -80,8 +79,7 @@ export class LeaderboardService {
       .leftJoin(
         "answers",
         "a",
-        "a.contestant_id = c.id AND (:sessionId IS NULL OR a.session_id = :sessionId)",
-        { sessionId: sessionId ?? null }
+        "a.contestant_id = c.id"
       )
       .select("c.id", "contestantId")
       .addSelect("c.name", "contestantName")

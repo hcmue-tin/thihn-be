@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { env } from "../../config/env";
 import { AppDataSource } from "../../config/database";
 import { Contestant } from "../contestant/contestant.entity";
+import { Answer } from "../submission/answer.entity";
 import { UnauthorizedError } from "../../shared/errors/AppError";
 
 export class AuthService {
@@ -32,6 +33,11 @@ export class AuthService {
     const token = jwt.sign({ role: "contestant", contestantId: contestant.id }, env.jwtSecret as Secret, {
       expiresIn: env.jwtContestantExpiresIn as SignOptions["expiresIn"]
     });
+    const totalRow = await AppDataSource.getRepository(Answer)
+      .createQueryBuilder("a")
+      .select("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+      .where("a.contestant_id = :contestantId", { contestantId: contestant.id })
+      .getRawOne<{ totalScore: string }>();
 
     return {
       token,
@@ -41,7 +47,7 @@ export class AuthService {
         code: contestant.code,
         name: contestant.name,
         unit: contestant.unit,
-        totalScore: contestant.totalScore
+        totalScore: Number(totalRow?.totalScore ?? 0)
       }
     };
   }

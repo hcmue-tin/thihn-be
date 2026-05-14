@@ -263,7 +263,7 @@ export class ContestService {
       screen: "team_score",
       ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
     });
-    const teams = await this.leaderboardService.getTeamScores(examSetId, teamIds, state.currentSessionId);
+    const teams = await this.leaderboardService.getTeamScores(examSetId, teamIds);
     return { state, examSetId, teams };
   }
 
@@ -277,7 +277,7 @@ export class ContestService {
       screen: "leaderboard",
       ...(opts && "activeTeamId" in opts ? { activeTeamId: opts.activeTeamId ?? null } : {})
     });
-    const rankings = await this.leaderboardService.getFinalRankings(teamIds, state.currentSessionId);
+    const rankings = await this.leaderboardService.getFinalRankings(teamIds);
     return { state, rankings };
   }
 
@@ -365,6 +365,7 @@ export class ContestService {
       .from("answers", "a")
       .where("a.question_id = :questionId", { questionId })
       .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
+      .andWhere("a.session_id = :sessionId", { sessionId })
       .groupBy("a.contestant_id")
       .getRawMany<{ contestantId: string }>();
 
@@ -383,26 +384,9 @@ export class ContestService {
       if (contestantIds.length === 0) {
         return;
       }
-
-      const totals = await manager
-        .createQueryBuilder()
-        .select("a.contestant_id", "contestantId")
-        .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
-        .from("answers", "a")
-        .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
-        .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
-        .andWhere("a.session_id = :sessionId", { sessionId })
-        .groupBy("a.contestant_id")
-        .getRawMany<{ contestantId: string; totalScore: string }>();
-
-      const totalMap = new Map<number, number>(totals.map((row) => [Number(row.contestantId), Number(row.totalScore)]));
-      const totalCase = contestantIds.map((id) => `WHEN ${id} THEN ${totalMap.get(id) ?? 0}`).join(" ");
-      await manager.query(
-        `UPDATE contestants
-         SET total_score = CASE id ${totalCase} ELSE total_score END
-         WHERE id IN (${contestantIds.join(",")})`
-      );
     });
+
+    await this.scoringService.recomputeOfficialTotals(contestantIds);
   }
 
   async getTeamList(teamIds?: number[] | null): Promise<Array<{ id: number; name: string; contestants: Array<{ id: number; name: string; code: string; unit: string | null }> }>> {

@@ -10,7 +10,7 @@ import {
   createContestantSchema,
   updateContestantSchema
 } from "./contestant.validator";
-import { authenticate, requireAdmin } from "../../shared/middleware/auth";
+import { authenticate, requireAdmin, requireContestant } from "../../shared/middleware/auth";
 
 export const contestantRouter = Router();
 
@@ -18,6 +18,8 @@ const excelUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }
 });
+
+contestantRouter.get("/me/score", authenticate, requireContestant, asyncHandler(contestantController.meScore.bind(contestantController)));
 
 contestantRouter.use(authenticate, requireAdmin);
 contestantRouter.get("/", validate(contestantQuerySchema), asyncHandler(contestantController.list.bind(contestantController)));

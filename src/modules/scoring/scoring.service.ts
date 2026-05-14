@@ -16,6 +16,31 @@ export class ScoringService {
   private fillBlankRepo = AppDataSource.getRepository(FillBlankAnswer);
   private answerRepo = AppDataSource.getRepository(Answer);
 
+  async recomputeOfficialTotals(contestantIds: number[]): Promise<Map<number, number>> {
+    const uniqueContestantIds = [...new Set(contestantIds)].filter(Number.isFinite);
+    if (uniqueContestantIds.length === 0) {
+      return new Map();
+    }
+
+    const totals = await AppDataSource.getRepository(Answer)
+      .createQueryBuilder("a")
+      .select("a.contestant_id", "contestantId")
+      .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
+      .where("a.contestant_id IN (:...contestantIds)", { contestantIds: uniqueContestantIds })
+      .groupBy("a.contestant_id")
+      .getRawMany<{ contestantId: string; totalScore: string }>();
+
+    const totalMap = new Map<number, number>(totals.map((row) => [Number(row.contestantId), Number(row.totalScore)]));
+    const totalCase = uniqueContestantIds.map((id) => `WHEN ${id} THEN ${totalMap.get(id) ?? 0}`).join(" ");
+    await AppDataSource.query(
+      `UPDATE contestants
+       SET total_score = CASE id ${totalCase} ELSE total_score END
+       WHERE id IN (${uniqueContestantIds.join(",")})`
+    );
+
+    return new Map(uniqueContestantIds.map((id) => [id, totalMap.get(id) ?? 0]));
+  }
+
   normalizeFillBlank(value: string): string {
     return value
       .trim()
@@ -137,37 +162,9 @@ export class ScoringService {
          WHERE id IN (${answerIds.join(",")})`
       );
 
-      const contestantIds = [...new Set(evaluated.map((item) => item.contestantId))];
-      const totals: Array<{ contestantId: number; totalScore: number }> = await manager
-        .createQueryBuilder(Answer, "a")
-        .select("a.contestant_id", "contestantId")
-        .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
-        .where("a.contestant_id IN (:...contestantIds)", { contestantIds })
-        .andWhere("a.exam_set_id = :examSetId", { examSetId: question.examSetId })
-        .andWhere("a.session_id = :sessionId", { sessionId })
-        .groupBy("a.contestant_id")
-        .getRawMany();
-
-      if (totals.length > 0) {
-        const totalCase = totals.map((item) => `WHEN ${item.contestantId} THEN ${Number(item.totalScore)}`).join(" ");
-        await manager.query(
-          `UPDATE contestants
-           SET total_score = CASE id ${totalCase} ELSE total_score END
-           WHERE id IN (${totals.map((item) => item.contestantId).join(",")})`
-        );
-      }
     });
 
-    const contestantTotalRows = await AppDataSource.getRepository(Answer)
-      .createQueryBuilder("a")
-      .select("a.contestant_id", "contestantId")
-      .addSelect("COALESCE(SUM(a.score_earned), 0)", "totalScore")
-      .where("a.contestant_id IN (:...contestantIds)", { contestantIds: [...new Set(evaluated.map((e) => e.contestantId))] })
-      .andWhere("a.session_id = :sessionId", { sessionId })
-      .groupBy("a.contestant_id")
-      .getRawMany<{ contestantId: number; totalScore: number }>();
-
-    const totalMap = new Map<number, number>(contestantTotalRows.map((row) => [Number(row.contestantId), Number(row.totalScore)]));
+    const totalMap = await this.recomputeOfficialTotals(evaluated.map((item) => item.contestantId));
     const correctCount = evaluated.filter((item) => item.isCorrect).length;
 
     return {

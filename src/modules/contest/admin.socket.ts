@@ -227,8 +227,9 @@ export const registerAdminSocketHandlers = (
       const payload = questionSchema.parse(rawPayload);
       clearCountdownEnd();
       const state = await contestService.getCurrentState();
-      await contestService.retakeQuestion(payload.questionId, state.currentSessionId);
-      const result = await contestService.showQuestion(payload.questionId, { activeTeamId: payload.activeTeamId ?? null });
+      const retakeQuestionId = payload.questionId ?? state.currentQuestionId;
+      await contestService.retakeQuestion(retakeQuestionId, state.currentSessionId);
+      const result = await contestService.showQuestion(retakeQuestionId, { activeTeamId: payload.activeTeamId ?? null });
       io.emit("screen:change", { screen: result.state.screen, data: { backgroundUrl: result.state.backgroundUrl ?? null } });
       io.emit("question:show", {
         question: result.question,
